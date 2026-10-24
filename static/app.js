@@ -165,37 +165,104 @@ async function loadCheck(checkId) {
   state.check = await getJson(`/api/checks/${checkId}`);
   const editor = $('check-editor'); editor.replaceChildren();
   const items = state.check.items.questions || state.check.items.tasks || [];
+  state.check.itemsList = items;
   state.check.values = {};
+  const header = addText(editor, 'div', '', 'response-header');
+  addText(header, 'strong', 'Child / roll');
+  items.forEach((_, index) => addText(header, 'strong', state.check.check_type === 'mcq' ? `Q${index + 1}` : `T${index + 1}`));
   state.check.students.forEach((student) => {
     const row = addText(editor, 'div', '', 'response-row');
-    addText(row, 'strong', `${student.roll_no}. ${student.first_name || ''}`);
+    const identity = addText(row, 'div', '', 'child-identity');
+    addText(identity, 'strong', `${student.roll_no}. ${student.first_name || ''}`);
+    const absent = document.createElement('input');
+    absent.type = 'checkbox'; absent.title = 'Absent'; absent.className = 'absent-toggle';
+    absent.onchange = () => {
+      row.classList.toggle('row-absent', absent.checked);
+      Object.values(state.check.values).filter((entry) => entry.roll === student.roll_no).forEach((entry) => {
+        entry.button.dataset.value = absent.checked ? 'absent' : (state.check.check_type === 'mcq' ? 'A' : 'got_it');
+        entry.button.textContent = absent.checked ? '—' : (state.check.check_type === 'mcq' ? 'A' : '✓');
+      });
+    };
+    identity.appendChild(absent);
     items.forEach((item, index) => {
       const button = addText(row, 'button', state.check.check_type === 'mcq' ? 'A' : '✓', 'response-cell');
       button.dataset.value = state.check.check_type === 'mcq' ? 'A' : 'got_it';
       button.onclick = () => cycleResponse(button, state.check.check_type);
-      state.check.values[`${student.roll_no}-${index}`] = button;
+      button.roll = student.roll_no; button.itemIndex = index;
+      state.check.values[`${student.roll_no}-${index}`] = {button, roll: student.roll_no, item, index};
+      if (state.check.check_type === 'observation') addErrorPicker(row, button, item);
     });
   });
   $('sample-results').classList.toggle('hidden', !state.demoMode);
 }
 
+function addErrorPicker(row, button, item) {
+  const picker = document.createElement('select');
+  picker.className = 'error-picker hidden'; picker.add(new Option('Error seen', ''));
+  (item.common_errors || []).forEach((error) => picker.add(new Option(error.description, error.misconception_id || error.description)));
+  picker.onchange = () => { button.errorId = picker.value; };
+  button.addEventListener('click', () => picker.classList.toggle('hidden', !['partly', 'not_yet'].includes(button.dataset.value)));
+  row.appendChild(picker);
+}
+
 function cycleResponse(button, type) {
-  const values = type === 'mcq' ? ['A', 'B', 'C', 'D', 'absent'] : ['got_it', 'partly', 'not_yet'];
+  const values = type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
   const next = values[(values.indexOf(button.dataset.value) + 1) % values.length];
-  button.dataset.value = next; button.textContent = type === 'mcq' ? (next === 'absent' ? '—' : next) : ({got_it:'✓', partly:'~', not_yet:'✗'}[next]);
-  button.classList.toggle('wrong', next !== 'A' && next !== 'got_it'); button.classList.toggle('absent', next === 'absent');
+  button.dataset.value = next; button.textContent = type === 'mcq' ? next : ({got_it:'✓', partly:'~', not_yet:'✗'}[next]);
+  button.classList.toggle('wrong', next !== 'A' && next !== 'got_it');
 }
 
 function collectResponses() {
   const responses = [];
-  Object.entries(state.check.values).forEach(([key, button]) => {
+  Object.entries(state.check.values).forEach(([key, entry]) => {
+    const button = entry.button;
     const [roll_no, item_index] = key.split('-').map(Number);
     const response = {roll_no, item_index};
     if (state.check.check_type === 'mcq') response.chosen_option = button.dataset.value;
-    else response.rating = button.dataset.value;
+    else { response.rating = button.dataset.value; response.error_id = button.errorId || null; }
     responses.push(response);
   });
   return responses;
+}
+
+function fillSampleResults() {
+  if (!state.check) return;
+  const items = state.check.itemsList;
+  Object.values(state.check.values).forEach((entry) => {
+    const button = entry.button;
+    const roll = entry.roll;
+    if (roll >= 30 && roll <= 32) {
+      button.dataset.value = 'absent'; button.textContent = '—'; return;
+    }
+    if (state.check.check_type === 'observation') {
+      const value = (roll + entry.index) % 5 === 0 ? 'not_yet' : ((roll + entry.index) % 3 === 0 ? 'partly' : 'got_it');
+      button.dataset.value = value; button.textContent = {got_it:'✓', partly:'~', not_yet:'✗'}[value]; return;
+    }
+    const item = items[entry.index];
+    const wrongOptions = Object.keys(item.option_errors || {});
+    const shouldBeWrong = (roll + entry.index) % 3 === 0;
+    const errorIndex = (roll + entry.index) % 9 === 0 && wrongOptions.length > 1 ? 1 : 0;
+    const option = shouldBeWrong && wrongOptions.length ? wrongOptions[errorIndex] : item.correct_option;
+    button.dataset.value = option; button.textContent = option;
+  });
+}
+
+function renderClassCounts() {
+  const editor = $('check-editor'); editor.replaceChildren();
+  addText(editor, 'p', 'Class count mode gives class-level diagnosis only; it does not create child groups.');
+  state.check.countInputs = [];
+  state.check.itemsList.forEach((item, index) => {
+    const card = addText(editor, 'div', '', 'count-card');
+    addText(card, 'strong', `${state.check.check_type === 'mcq' ? 'Question' : 'Task'} ${index + 1}`);
+    const inputs = {};
+    const labels = state.check.check_type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
+    labels.forEach((label) => { const wrapper = addText(card, 'label', label); const input = document.createElement('input'); input.type = 'number'; input.min = 0; input.value = 0; input.dataset.label = label; wrapper.appendChild(input); inputs[label] = input; });
+    state.check.countInputs.push(inputs);
+  });
+}
+
+function collectClassCounts() {
+  return Object.fromEntries(state.check.countInputs.map((inputs, index) => [index, Object.fromEntries(Object.entries(inputs).map(([label, input]) => [label, Number(input.value) || 0]))]));
 }
 
 async function load() {
@@ -218,7 +285,9 @@ $('class-form').addEventListener('submit', async (event) => { event.preventDefau
 document.querySelectorAll('.tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((view) => view.classList.add('hidden')); $(button.dataset.view).classList.remove('hidden'); if (button.dataset.view === 'usage-view') loadUsage(); }));
 load();
 $('lesson-select').addEventListener('change', (event) => loadCheck(event.target.value));
-$('save-results').addEventListener('click', async () => { if (!state.check) return; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({check_mode:'each_child', responses:collectResponses()})}); alert('Results saved. Open Next steps to see the diagnosis.'); });
-$('sample-results').addEventListener('click', () => { Object.values(state.check.values).forEach((button, index) => { if (index % 7 === 0) cycleResponse(button, state.check.check_type); }); });
+$('save-results').addEventListener('click', async () => { if (!state.check) return; const payload = state.check.mode === 'class_count' ? {check_mode:'class_count', class_counts:collectClassCounts()} : {check_mode:'each_child', responses:collectResponses()}; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); alert('Results saved. Open Next steps to see the diagnosis.'); });
+$('sample-results').addEventListener('click', fillSampleResults);
+$('each-child-mode').addEventListener('click', () => { state.check.mode = 'each_child'; loadCheck(state.check.id); });
+$('class-count-mode').addEventListener('click', () => { state.check.mode = 'class_count'; renderClassCounts(); });
 document.querySelector('[data-view="check-view"]').addEventListener('click', loadLessons);
-document.querySelector('[data-view="next-view"]').addEventListener('click', async () => { if (!state.check) return; const result = await getJson(`/api/checks/${state.check.id}/next-steps`, {method:'POST'}); const content = $('next-content'); content.replaceChildren(); addText(content, 'h3', 'Class insight'); result.insight.concepts.forEach((concept) => addText(content, 'p', `${concept.concept_id}: ${concept.percent_correct}% · ${concept.status}`)); addText(content, 'h3', 'Top errors'); result.insight.top_errors.slice(0, 3).forEach((error) => addText(content, 'p', `${error.count} children: ${error.description}${error.ai_suggested ? ' (AI-suggested)' : ''}`)); addText(content, 'h3', 'Coach summary'); addText(content, 'p', result.next_steps.summary); addText(content, 'h3', 'Next lesson warm-up'); addText(content, 'p', result.next_steps.next_lesson_warmup); const warmup = addText(content, 'button', 'Use in next lesson', 'primary'); warmup.onclick = async () => { await getJson(`/api/checks/${state.check.id}/use-warmup`, {method:'POST'}); warmup.textContent = 'Added to next lesson ✓'; warmup.disabled = true; }; });
+document.querySelector('[data-view="next-view"]').addEventListener('click', async () => { if (!state.check) return; const result = await getJson(`/api/checks/${state.check.id}/next-steps`, {method:'POST'}); const content = $('next-content'); content.replaceChildren(); addText(content, 'h3', 'Class insight'); result.insight.concepts.forEach((concept) => addText(content, 'p', `${concept.concept_id}: ${concept.percent_correct}% · ${concept.status}`)); addText(content, 'h3', 'Top errors'); result.insight.top_errors.slice(0, 3).forEach((error) => addText(content, 'p', `${error.count} children: ${error.description}${error.ai_suggested ? ' (AI-suggested)' : ''}`)); addText(content, 'h3', 'Coach summary'); addText(content, 'p', result.next_steps.summary); addText(content, 'h3', 'Next lesson warm-up'); addText(content, 'p', result.next_steps.next_lesson_warmup); const warmup = addText(content, 'button', 'Use in next lesson', 'primary'); warmup.onclick = async () => { await getJson(`/api/checks/${state.check.id}/use-warmup`, {method:'POST'}); warmup.textContent = 'Added to next lesson ✓'; warmup.disabled = true; }; const history = await getJson(`/api/progress/${selectedClass().id}`); const progress = $('progress-history'); progress.replaceChildren(); Object.entries(history.concepts).forEach(([concept, checks]) => { const row = addText(progress, 'p', `${concept}: `); checks.forEach((item) => addText(row, 'span', `${item.percent}%`, `progress-${item.status.replaceAll(' ', '-').toLowerCase()}`)); }); });

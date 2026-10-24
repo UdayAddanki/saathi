@@ -44,6 +44,15 @@ def _curated_issues(check: dict, concepts: list[dict]) -> list[dict]:
     return issues
 
 
+def _coach_number_issue(summary: str, insight_json: str) -> dict | None:
+    """Return a must-fix issue when Coach invents a statistic."""
+    insight_numbers = {int(number) for number in re.findall(r"\d+", insight_json)}
+    summary_numbers = {int(number) for number in re.findall(r"\d+", summary)}
+    if summary_numbers <= insight_numbers:
+        return None
+    return {"target": "summary", "problem": "Summary contains a number not present in the computed insight.", "fix": "Use only numbers from the insight.", "severity": "must_fix"}
+
+
 def generate_plan(class_id: str, subject: str, chapter_or_topic: str, teacher_note: str | None = None) -> dict:
     """Run planner, check builder, reviewer, and at most one revision."""
     profile = get_class_profile(class_id)
@@ -122,13 +131,15 @@ def generate_next_steps(check_id: str) -> dict:
         request = f"check_id={check_id}; class_id={check['class_id']}; computed insight={insight.model_dump_json()}. Call get_insight first. Use only its numbers."
         result, usage["coach"] = _run(coach, request, run_id, "coach")
         output = result.output
-        insight_numbers = {int(number) for number in re.findall(r"\d+", insight.model_dump_json())}
-        output_numbers = {int(number) for number in re.findall(r"\d+", output.summary)}
-        issues = [] if output_numbers <= insight_numbers else [{"target": "summary", "problem": "Summary contains a number not present in the computed insight.", "fix": "Use only numbers from the insight.", "severity": "must_fix"}]
-        revised = False
-        if issues:
-            revised = True
-            result, usage["coach_revision"] = _run(coach, request + f" Fix exactly this issue: {json.dumps(issues)}", run_id, "coach_revision")
+        number_issue = _coach_number_issue(output.summary, insight.model_dump_json())
+        issues = [number_issue] if number_issue else []
+        review_prompt = f"This is a next steps review, not a lesson plan. Check that the reteach targets the top error, activities are the same topic at three levels, practice answers are plausible, and content is age-appropriate. Mode=next_steps. Insight={insight.model_dump_json()} NextSteps={output.model_dump_json()}"
+        review_result, usage["reviewer"] = _run(reviewer, review_prompt, run_id, "reviewer")
+        reviewer_issues = [issue.model_dump() for issue in review_result.output.issues if issue.severity == "must_fix"]
+        issues.extend(reviewer_issues)
+        revised = bool(issues)
+        if revised:
+            result, usage["coach_revision"] = _run(coach, request + f" Fix these must-fix issues exactly once: {json.dumps(issues)}", run_id, "coach_revision")
             output = result.output
         totals = {key: sum(item[key] for item in usage.values()) for key in ("input_tokens", "cached_input_tokens", "output_tokens", "cost_usd", "provider_cost_usd")}
         db = conn(); db.execute("update runs set status=?, total_cost_usd=? where id=?", ("complete", totals["cost_usd"], run_id)); db.commit(); db.close()

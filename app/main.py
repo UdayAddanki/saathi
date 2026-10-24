@@ -167,6 +167,21 @@ def use_warmup(check_id: str, request: Request):
     database.execute("INSERT OR REPLACE INTO pending_warmups VALUES(?,?,?,datetime('now'))", (check['class_id'], warmup, check_id))
     database.commit(); database.close()
     return {'warmup': warmup}
+
+@app.get('/api/progress/{class_id}')
+def progress(class_id: str, request: Request):
+    authorize(request)
+    history = rows('''select i.insight_json, i.created_at, ch.id as check_id, lp.chapter_or_topic
+                      from insights i join checks ch on ch.id=i.check_id join lesson_plans lp on lp.id=ch.lesson_plan_id
+                      where lp.class_id=? order by i.created_at''', (class_id,))
+    checks = []
+    concepts = {}
+    for entry in history:
+        data = json.loads(entry['insight_json'])
+        checks.append({'check_id': entry['check_id'], 'topic': entry['chapter_or_topic'], 'created_at': entry['created_at']})
+        for concept in data['concepts']:
+            concepts.setdefault(concept['concept_id'], []).append({'check_id': entry['check_id'], 'percent': concept['percent_correct'], 'status': concept['status']})
+    return {'checks': checks, 'concepts': concepts}
 @app.get('/api/usage')
 def usage(request: Request):
     authorize(request)
