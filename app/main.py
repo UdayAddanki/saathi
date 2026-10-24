@@ -9,11 +9,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from .config import ACCESS_CODE, DAILY_BUDGET_USD, KEY_FOUND
+from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND
 from .db import init_db, rows, one, conn
 from .models import PlanRequest, ClassRequest
-from .pipeline import generate_plan
+from .pipeline import generate_plan, generate_next_steps
 from .config import ROOT
+from .diagnosis import analyze_results
+from .models import ResultsRequest
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -27,7 +29,7 @@ INJECTION_PATTERNS = re.compile(r"ignore\s+(all\s+)?previous\s+instructions|syst
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'key_found': KEY_FOUND, 'access_required': bool(ACCESS_CODE), 'message': None if KEY_FOUND else 'PORTKEY_API_KEY not found'}
+    return {'ok': True, 'key_found': KEY_FOUND, 'access_required': bool(ACCESS_CODE), 'demo_mode': DEMO_MODE, 'message': None if KEY_FOUND else 'PORTKEY_API_KEY not found'}
 
 def authorize(request):
     if not ACCESS_CODE:
@@ -86,6 +88,85 @@ def saved(plan_id: str, request: Request):
  x=one('select * from lesson_plans where id=?',(plan_id,))
  if not x: raise HTTPException(404,'Plan not found')
  return x
+
+@app.get('/api/lessons/recent')
+def recent_lessons(request: Request):
+    authorize(request)
+    return rows('''select lp.id, lp.chapter_or_topic, lp.created_at, c.name as class_name, c.grade, ch.id as check_id, ch.check_type
+                   from lesson_plans lp join classes c on c.id=lp.class_id join checks ch on ch.lesson_plan_id=lp.id
+                   order by lp.created_at desc limit 20''')
+
+@app.get('/api/checks/{check_id}')
+def get_check(check_id: str, request: Request):
+    authorize(request)
+    check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
+    if not check:
+        raise HTTPException(404, 'Check not found')
+    check['items'] = json.loads(check.pop('items_json'))
+    check['students'] = rows('select roll_no, first_name from students where class_id=? order by roll_no', (check['class_id'],))
+    return check
+
+@app.post('/api/checks/{check_id}/responses')
+def save_results(check_id: str, payload: ResultsRequest, request: Request):
+    authorize(request)
+    check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
+    if not check:
+        raise HTTPException(404, 'Check not found')
+    students = {item['roll_no'] for item in rows('select roll_no from students where class_id=?', (check['class_id'],))}
+    items = json.loads(check['items_json'])
+    if payload.check_mode == 'class_count':
+        if not payload.class_counts:
+            raise HTTPException(422, 'Class counts are required.')
+        class_size = len(students)
+        for values in payload.class_counts.values():
+            if sum(int(value) for value in values.values()) > class_size:
+                raise HTTPException(422, 'A class count cannot exceed the class size.')
+    else:
+        for response in payload.responses:
+            if int(response.get('roll_no', -1)) not in students:
+                raise HTTPException(422, 'That roll number is not in this class.')
+            index = int(response.get('item_index', -1))
+            if index < 0 or index >= len(items):
+                raise HTTPException(422, 'That question or task does not exist.')
+            option = response.get('chosen_option')
+            if check['check_type'] == 'mcq' and option not in {'A', 'B', 'C', 'D', 'absent'}:
+                raise HTTPException(422, 'MCQ answers must be A, B, C, D, or absent.')
+            if check['check_type'] == 'observation' and response.get('rating') not in {'got_it', 'partly', 'not_yet', 'absent'}:
+                raise HTTPException(422, 'Observation ratings are got_it, partly, not_yet, or absent.')
+    db = conn()
+    db.execute('delete from responses where check_id=?', (check_id,))
+    if payload.check_mode == 'class_count':
+        db.execute('insert into responses(check_id, item_index, check_mode, class_counts_json) values(?,?,?,?)', (check_id, 0, payload.check_mode, json.dumps(payload.class_counts)))
+    else:
+        for response in payload.responses:
+            db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,rating,error_id,check_mode) values(?,?,?,?,?,?,?)', (check_id, response.get('roll_no'), response.get('item_index'), response.get('chosen_option'), response.get('rating'), response.get('error_id'), payload.check_mode))
+    db.commit(); db.close()
+    return analyze_results(check_id).model_dump()
+
+@app.get('/api/checks/{check_id}/insight')
+def insight(check_id: str, request: Request):
+    authorize(request)
+    return analyze_results(check_id).model_dump()
+
+@app.post('/api/checks/{check_id}/next-steps')
+def next_steps(check_id: str, request: Request):
+    authorize(request)
+    return generate_next_steps(check_id)
+
+@app.post('/api/checks/{check_id}/use-warmup')
+def use_warmup(check_id: str, request: Request):
+    authorize(request)
+    check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
+    insight_row = one('select insight_json from insights where check_id=?', (check_id,))
+    if not check or not insight_row:
+        raise HTTPException(422, 'Save results and calculate the insight first.')
+    data = json.loads(insight_row['insight_json'])
+    weak = next((item for item in data['concepts'] if item['status'] == 'Needs re-teaching'), None)
+    warmup = f"Review {weak['concept_id']} for 6 minutes using a quick example and pair practice." if weak else 'Use a 5-minute warm-up on the previous lesson.'
+    database = conn()
+    database.execute("INSERT OR REPLACE INTO pending_warmups VALUES(?,?,?,datetime('now'))", (check['class_id'], warmup, check_id))
+    database.commit(); database.close()
+    return {'warmup': warmup}
 @app.get('/api/usage')
 def usage(request: Request):
     authorize(request)

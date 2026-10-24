@@ -14,6 +14,7 @@ PORTKEY_API_KEY = os.getenv("PORTKEY_API_KEY")
 KEY_FOUND = bool(PORTKEY_API_KEY)
 ACCESS_CODE = os.getenv("ACCESS_CODE", "").strip()
 DAILY_BUDGET_USD = float(os.getenv("DAILY_BUDGET_USD", "1.00"))
+DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true" and not os.getenv("RENDER")
 DB_PATH = ROOT / "saathi.db"
 
 

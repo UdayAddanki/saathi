@@ -36,7 +36,12 @@ def get_class_profile(class_id: str) -> dict:
     x['resources']=json.loads(x.pop('resources_json')); _log_tool('get_class_profile', {'class_id':class_id}, started); return x
 def get_latest_insights(class_id: str) -> str:
     """Return Phase 2 insight placeholder."""
-    started = time.perf_counter(); result = 'no data yet'; _log_tool('get_latest_insights', {'class_id':class_id}, started); return result
+    from .db import rows
+    started = time.perf_counter()
+    results = rows('''select i.insight_json from insights i join checks ch on ch.id=i.check_id join lesson_plans lp on lp.id=ch.lesson_plan_id where lp.class_id=? order by i.created_at desc limit 1''', (class_id,))
+    result = results[0]['insight_json'] if results else 'no data yet'
+    _log_tool('get_latest_insights', {'class_id':class_id}, started)
+    return result
 def get_misconceptions(concept_id: str) -> list[dict]:
     """Return curated misconceptions for a concept."""
     started = time.perf_counter(); result = [m for m in MISCONCEPTIONS if m['concept_id']==concept_id]; _log_tool('get_misconceptions', {'concept_id':concept_id}, started); return result

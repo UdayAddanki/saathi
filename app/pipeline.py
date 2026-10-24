@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 import logging
+import re
 
 from pydantic_ai import UsageLimits
 
@@ -15,6 +16,8 @@ from .curriculum import MISCONCEPTIONS, get_class_profile, get_curriculum_contex
 from . import curriculum
 from .db import add_run, conn
 from .usage import record
+from .agents.coach import coach
+from .diagnosis import analyze_results
 
 logger = logging.getLogger(__name__)
 
@@ -106,3 +109,31 @@ def generate_plan(class_id: str, subject: str, chapter_or_topic: str, teacher_no
         database.commit()
         database.close()
         return {"error": "The lesson could not be prepared. Check the API key and try again.", "run_id": run_id}
+
+
+def generate_next_steps(check_id: str) -> dict:
+    """Diagnose saved results and ask the coach for teaching content."""
+    insight = analyze_results(check_id)
+    from .db import one
+    check = one("SELECT ch.*, lp.class_id FROM checks ch JOIN lesson_plans lp ON lp.id=ch.lesson_plan_id WHERE ch.id=?", (check_id,))
+    run_id = add_run(check["class_id"], "next_steps")
+    usage = {}
+    try:
+        request = f"check_id={check_id}; class_id={check['class_id']}; computed insight={insight.model_dump_json()}. Call get_insight first. Use only its numbers."
+        result, usage["coach"] = _run(coach, request, run_id, "coach")
+        output = result.output
+        insight_numbers = {int(number) for number in re.findall(r"\d+", insight.model_dump_json())}
+        output_numbers = {int(number) for number in re.findall(r"\d+", output.summary)}
+        issues = [] if output_numbers <= insight_numbers else [{"target": "summary", "problem": "Summary contains a number not present in the computed insight.", "fix": "Use only numbers from the insight.", "severity": "must_fix"}]
+        revised = False
+        if issues:
+            revised = True
+            result, usage["coach_revision"] = _run(coach, request + f" Fix exactly this issue: {json.dumps(issues)}", run_id, "coach_revision")
+            output = result.output
+        totals = {key: sum(item[key] for item in usage.values()) for key in ("input_tokens", "cached_input_tokens", "output_tokens", "cost_usd", "provider_cost_usd")}
+        db = conn(); db.execute("update runs set status=?, total_cost_usd=? where id=?", ("complete", totals["cost_usd"], run_id)); db.commit(); db.close()
+        return {"run_id": run_id, "check_id": check_id, "insight": insight.model_dump(), "next_steps": output.model_dump(), "revised": revised, "issues": issues, "usage": {"total": totals, "by_agent": usage}}
+    except Exception:
+        logger.exception("Next steps failed for run %s", run_id)
+        db = conn(); db.execute("update runs set status=? where id=?", ("failed", run_id)); db.commit(); db.close()
+        return {"error": "Next steps could not be prepared. Please try again.", "run_id": run_id}

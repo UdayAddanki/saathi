@@ -15,12 +15,18 @@ CREATE TABLE IF NOT EXISTS review_results(id TEXT PRIMARY KEY,run_id TEXT,passed
 CREATE TABLE IF NOT EXISTS llm_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name TEXT,input_tokens INTEGER,cached_input_tokens INTEGER,output_tokens INTEGER,cost_usd REAL,provider_cost_usd REAL,duration_ms INTEGER,created_at TEXT);
 CREATE TABLE IF NOT EXISTS tool_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name TEXT,tool_name TEXT,arguments_json TEXT,duration_ms INTEGER,created_at TEXT);
 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,kind TEXT,class_id TEXT,status TEXT,total_cost_usd REAL,created_at TEXT);
+CREATE TABLE IF NOT EXISTS pending_warmups(class_id TEXT PRIMARY KEY,warmup TEXT,source_check_id TEXT,created_at TEXT);
 """
 def conn() -> sqlite3.Connection:
     c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row; return c
 def init_db() -> None:
     c = conn()
     c.executescript(SCHEMA)
+    response_columns = {row[1] for row in c.execute("PRAGMA table_info(responses)")}
+    if "check_mode" not in response_columns:
+        c.execute("ALTER TABLE responses ADD COLUMN check_mode TEXT DEFAULT 'each_child'")
+    if "class_counts_json" not in response_columns:
+        c.execute("ALTER TABLE responses ADD COLUMN class_counts_json TEXT")
     demos = json.load(open(DB_PATH.parent / "data/demo_classes.json"))
     for x in demos:
         if not c.execute('select 1 from classes where id=?',(x['id'],)).fetchone():
@@ -31,11 +37,11 @@ def rows(sql: str, args: tuple = ()) -> list[dict]:
     c=conn(); out=[dict(r) for r in c.execute(sql,args)]; c.close(); return out
 def one(sql: str, args: tuple = ()) -> dict | None:
     a=rows(sql,args); return a[0] if a else None
-def add_run(class_id: str) -> str:
+def add_run(class_id: str, kind: str = "plan") -> str:
     import datetime
     run_id = str(uuid.uuid4())
     c = conn()
-    c.execute("INSERT INTO runs VALUES(?,?,?,?,?,?)", (run_id, "plan", class_id, "running", 0, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    c.execute("INSERT INTO runs VALUES(?,?,?,?,?,?)", (run_id, kind, class_id, "running", 0, datetime.datetime.now(datetime.timezone.utc).isoformat()))
     c.commit()
     c.close()
     return run_id

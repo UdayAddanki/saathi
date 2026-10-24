@@ -1,4 +1,5 @@
 const state = { boards: [], classes: [], currentResult: null };
+state.check = null;
 const $ = (id) => document.getElementById(id);
 
 function addText(parent, tag, text, className = '') {
@@ -152,6 +153,51 @@ async function loadUsage() {
   data.recent_runs.forEach((run) => { const row = $('usage-rows').insertRow(); [new Date(run.created_at).toLocaleString(), run.class_name || run.class_id, run.status, '—', '—', '—', `$${Number(run.total_cost_usd || 0).toFixed(6)}`].forEach((value) => addText(row.insertCell(), 'span', value)); });
 }
 
+async function loadLessons() {
+  const lessons = await getJson('/api/lessons/recent');
+  $('lesson-select').replaceChildren();
+  lessons.forEach((lesson) => $('lesson-select').add(new Option(`${lesson.class_name} · ${lesson.chapter_or_topic}`, lesson.check_id)));
+  if (lessons.length) await loadCheck(lessons[0].check_id);
+}
+
+async function loadCheck(checkId) {
+  if (!checkId) return;
+  state.check = await getJson(`/api/checks/${checkId}`);
+  const editor = $('check-editor'); editor.replaceChildren();
+  const items = state.check.items.questions || state.check.items.tasks || [];
+  state.check.values = {};
+  state.check.students.forEach((student) => {
+    const row = addText(editor, 'div', '', 'response-row');
+    addText(row, 'strong', `${student.roll_no}. ${student.first_name || ''}`);
+    items.forEach((item, index) => {
+      const button = addText(row, 'button', state.check.check_type === 'mcq' ? 'A' : '✓', 'response-cell');
+      button.dataset.value = state.check.check_type === 'mcq' ? 'A' : 'got_it';
+      button.onclick = () => cycleResponse(button, state.check.check_type);
+      state.check.values[`${student.roll_no}-${index}`] = button;
+    });
+  });
+  $('sample-results').classList.toggle('hidden', !state.demoMode);
+}
+
+function cycleResponse(button, type) {
+  const values = type === 'mcq' ? ['A', 'B', 'C', 'D', 'absent'] : ['got_it', 'partly', 'not_yet'];
+  const next = values[(values.indexOf(button.dataset.value) + 1) % values.length];
+  button.dataset.value = next; button.textContent = type === 'mcq' ? (next === 'absent' ? '—' : next) : ({got_it:'✓', partly:'~', not_yet:'✗'}[next]);
+  button.classList.toggle('wrong', next !== 'A' && next !== 'got_it'); button.classList.toggle('absent', next === 'absent');
+}
+
+function collectResponses() {
+  const responses = [];
+  Object.entries(state.check.values).forEach(([key, button]) => {
+    const [roll_no, item_index] = key.split('-').map(Number);
+    const response = {roll_no, item_index};
+    if (state.check.check_type === 'mcq') response.chosen_option = button.dataset.value;
+    else response.rating = button.dataset.value;
+    responses.push(response);
+  });
+  return responses;
+}
+
 async function load() {
   const health = await getJson('/api/health');
   if (health.access_required && !localStorage.getItem('saathi_access_code')) {
@@ -159,7 +205,7 @@ async function load() {
     if (code) localStorage.setItem('saathi_access_code', code);
   }
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
-  state.boards = boards.boards; state.classes = classes; renderClasses();
+  state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
 }
 
@@ -171,3 +217,8 @@ $('add-class-button').onclick = () => $('class-dialog').showModal(); $('close-di
 $('class-form').addEventListener('submit', async (event) => { event.preventDefault(); const resources = [...document.querySelectorAll('#class-form input[type=checkbox]:checked')].map((item) => item.value); const created = await getJson('/api/classes', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({board:$('new-board').value, grade:Number($('new-grade').value), section:$('new-section').value, class_size:Number($('new-size').value), period_minutes:Number($('new-period').value), resources})}); state.classes = await getJson('/api/classes'); renderClasses(); $('class-select').value = created.id; refreshSubjects(); $('class-dialog').close(); });
 document.querySelectorAll('.tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((view) => view.classList.add('hidden')); $(button.dataset.view).classList.remove('hidden'); if (button.dataset.view === 'usage-view') loadUsage(); }));
 load();
+$('lesson-select').addEventListener('change', (event) => loadCheck(event.target.value));
+$('save-results').addEventListener('click', async () => { if (!state.check) return; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({check_mode:'each_child', responses:collectResponses()})}); alert('Results saved. Open Next steps to see the diagnosis.'); });
+$('sample-results').addEventListener('click', () => { Object.values(state.check.values).forEach((button, index) => { if (index % 7 === 0) cycleResponse(button, state.check.check_type); }); });
+document.querySelector('[data-view="check-view"]').addEventListener('click', loadLessons);
+document.querySelector('[data-view="next-view"]').addEventListener('click', async () => { if (!state.check) return; const result = await getJson(`/api/checks/${state.check.id}/next-steps`, {method:'POST'}); const content = $('next-content'); content.replaceChildren(); addText(content, 'h3', 'Class insight'); result.insight.concepts.forEach((concept) => addText(content, 'p', `${concept.concept_id}: ${concept.percent_correct}% · ${concept.status}`)); addText(content, 'h3', 'Top errors'); result.insight.top_errors.slice(0, 3).forEach((error) => addText(content, 'p', `${error.count} children: ${error.description}${error.ai_suggested ? ' (AI-suggested)' : ''}`)); addText(content, 'h3', 'Coach summary'); addText(content, 'p', result.next_steps.summary); addText(content, 'h3', 'Next lesson warm-up'); addText(content, 'p', result.next_steps.next_lesson_warmup); const warmup = addText(content, 'button', 'Use in next lesson', 'primary'); warmup.onclick = async () => { await getJson(`/api/checks/${state.check.id}/use-warmup`, {method:'POST'}); warmup.textContent = 'Added to next lesson ✓'; warmup.disabled = true; }; });

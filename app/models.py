@@ -60,3 +60,26 @@ class PlanRequest(BaseModel):
     class_id: str; subject: str; chapter_or_topic: str = Field(max_length=120); teacher_note: str | None = Field(default=None, max_length=500)
 class ClassRequest(BaseModel):
     board: str; grade: int = Field(ge=1, le=5); section: str; class_size: int = Field(ge=1, le=100); period_minutes: int = 40; resources: list[str] = []
+
+class Insight(BaseModel):
+    check_id: str
+    check_mode: Literal["each_child", "class_count"]
+    concepts: list[dict]
+    top_errors: list[dict]
+    groups: dict
+    missed_lesson: list[dict] = []
+    prerequisite_flags: list[dict] = []
+    recommended_actions: list[str] = []
+
+class NextSteps(BaseModel):
+    summary: str
+    reteach: dict
+    group_activities: list[dict]
+    practice_sheet: list[dict]
+    missed_lesson_catchup: str
+    next_lesson_warmup: str
+
+class ResultsRequest(BaseModel):
+    check_mode: Literal["each_child", "class_count"]
+    responses: list[dict] = []
+    class_counts: dict | None = None
