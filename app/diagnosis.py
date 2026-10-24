@@ -24,7 +24,8 @@ def analyze_results(check_id: str) -> Insight:
         raise ValueError("Check not found")
     lesson = one("SELECT * FROM lesson_plans WHERE id=?", (check["lesson_plan_id"],))
     profile = one("SELECT * FROM classes WHERE id=?", (lesson["class_id"],))
-    items = json.loads(check["items_json"])
+    saved_items = json.loads(check["items_json"])
+    items = saved_items if isinstance(saved_items, list) else saved_items.get("questions", saved_items.get("tasks", saved_items))
     response_rows = [dict(row) for row in database.execute("SELECT * FROM responses WHERE check_id=?", (check_id,))]
     mode = response_rows[0].get("check_mode", "each_child") if response_rows else "each_child"
     if mode == "class_count" and response_rows:
