@@ -70,11 +70,12 @@ LESSON_STEPS = {
     "5E": ["Engage", "Explore", "Explain", "Elaborate", "Evaluate"],
     "project-based": ["Launch or recap", "Work time", "Check-in", "Share", "Reflect + assess"],
     "experiential": ["Do", "Reflect", "Think", "Apply", "Assess"],
+    "5-magic": ["Purpose", "Integration", "Mastery", "Methods", "Partnership"],
 }
 class Differentiation(BaseModel):
     support: str; on_level: str; challenge: str
 class LessonPlan(BaseModel):
-    lesson_type: Literal["5-step", "5E", "project-based", "experiential"] | None = None
+    lesson_type: Literal["5-step", "5E", "project-based", "experiential", "5-magic"] | None = None
     vision: LessonVision | None = None
     method: list[MethodStep] | None = None
     make_it_work: MakeItWork | None = None
@@ -146,7 +147,7 @@ class PlanRequest(BaseModel):
     chapter_or_topic: str | None = Field(default=None, max_length=120)
     chapter: str = Field(default="", max_length=120)
     topic: str = Field(default="", max_length=120)
-    lesson_type: Literal["5-step", "5E", "project-based", "experiential"] = "5-step"
+    lesson_type: Literal["5-step", "5E", "project-based", "experiential", "5-magic"] = "5-step"
     learning_level_choice: str = "Mixed levels"
     learning_level_text: str = Field(default="", max_length=300)
     unit_goal: str = Field(default="", max_length=300)
