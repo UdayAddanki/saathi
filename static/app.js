@@ -302,7 +302,7 @@ async function load() {
   let me;
   try { me = await getJson('/api/auth/me'); } catch (error) { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); showAuth('login'); return; }
   $('app-main').classList.remove('hidden'); document.querySelector('.tabs').classList.remove('hidden');
-  const me = await getJson('/api/auth/me'); $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || ''; if (!me.setup_complete) showSetupWizard();
+  $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || ''; if (!me.setup_complete) showSetupWizard();
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
   state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;

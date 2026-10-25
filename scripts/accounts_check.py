@@ -104,13 +104,17 @@ def run(fake):
         try:
             time.sleep(2)
             with sync_playwright() as pw:
-                browser=pw.chromium.launch(); ca=browser.new_context(); cb=browser.new_context(); pa=ca.new_page(); pb=cb.new_page()
+                browser=pw.chromium.launch(); ca=browser.new_context(); cb=browser.new_context(); pa=ca.new_page(); pb=cb.new_page(); browser_errors=[]
+                for page in (pa, pb):
+                    page.on('pageerror', lambda error: browser_errors.append(f'pageerror: {error}'))
+                    page.on('console', lambda message: browser_errors.append(f'console {message.type}: {message.text}') if message.type == 'error' and '401 (Unauthorized)' not in message.text and 'Pattern attribute value' not in message.text else None)
                 signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.')); require(pa.request.post(base+'/api/auth/setup-complete'),'wizard skip'); records.append(result('wizard',True,'Setup wizard skip persisted.'))
                 classes={'a':create_class(pa,base,3,'TS_SCERT','A'),'b':create_class(pb,base,1,'NCERT','B')}; records.append(roll_step(pa,pb,base,classes)); plans=plans_step(pa,pb,base,classes,db_path,fake); records.append({k:v for k,v in plans.items() if k!='ids'}); ids=plans['ids']; records.append(ownership_step(pa,pb,base,classes,ids)); records.append(relogin(pa,base,classes['a'],ids['a'][0])); reset,reset_page=reset_step(pa,base,log_path); records.append(reset); pa.reload(); pa.wait_for_timeout(300); records.append(result('reload',True,'App remained visible after reload.')); pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(500); 
                 if 'hidden' in (pb.locator('#app-main').get_attribute('class') or ''): raise AssertionError('demo: app remains hidden after demo login')
                 records.append(result('demo',True,'Demo login completed and app is visible.'))
                 admin=require(pa.request.get(base+'/admin/pilot',headers={'X-Admin-Code':'check-admin'}),'admin page'); require_text(pa.request.get(base+'/admin/pilot.csv',headers={'X-Admin-Code':'check-admin'}),'admin csv'); records.append(result('admin',True,f'Admin listed {len(admin["teachers"])} teachers and CSV downloaded.'))
                 for page,name in ((pa,'account-menu'),(reset_page,'reset')): page.screenshot(path=OUT/f'accounts-{name}.png',full_page=True)
+                if browser_errors: raise AssertionError('; '.join(browser_errors))
                 records.append(result('screenshots',True,'Auth screenshots saved.')); browser.close()
         except Exception as exc:
             records.append(result('failure',False,f'{type(exc).__name__}: {exc}')); raise
