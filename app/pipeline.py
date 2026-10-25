@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 
 
 def _run(agent, prompt: str, run_id: str, name: str, teacher_id: str | None = None):
+    if teacher_id:
+        from .config import DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD
+        from .db import rows
+        today = datetime.date.today().isoformat()
+        global_cost = sum(item['cost_usd'] for item in rows('select cost_usd from llm_calls where created_at like ?', (today + '%',)))
+        teacher_cost = sum(item['cost_usd'] for item in rows('select cost_usd from llm_calls where teacher_id=? and created_at like ?', (teacher_id, today + '%')))
+        if global_cost >= DAILY_BUDGET_USD or teacher_cost >= TEACHER_DAILY_BUDGET_USD:
+            raise RuntimeError("You've used today's limit. It resets at midnight.")
     curriculum.CURRENT_RUN_ID = run_id
     curriculum.CURRENT_AGENT = name
     started = time.perf_counter()

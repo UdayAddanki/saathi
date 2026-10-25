@@ -120,7 +120,7 @@ def request_is_https(_response):
 def login(payload: dict, response: Response):
     teacher = one('select * from teachers where lower(username)=?', (str(payload.get('username', '')).strip().lower(),))
     if not teacher or not password_matches(str(payload.get('password', '')), teacher['password_hash'], teacher['password_salt']): raise HTTPException(401, 'Wrong username or password.')
-    db = conn(); token = new_session(db, teacher['id']); db.execute('update teachers set last_active=datetime("now") where id=?', (teacher['id'],)); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'username': teacher['username']}
+    db = conn(); token = new_session(db, teacher['id']); db.execute('update teachers set last_active=datetime("now") where id=?', (teacher['id'],)); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'username': teacher['username'], 'force_password_change': bool(teacher.get('force_password_change'))}
 
 @app.post('/api/auth/logout')
 def logout(request: Request, response: Response):
@@ -142,7 +142,7 @@ def change_password(payload: dict, request: Request, response: Response):
     teacher = require_teacher(request)
     if not password_matches(payload.get('current_password', ''), teacher['password_hash'], teacher['password_salt']): raise HTTPException(403, 'Current password is incorrect.')
     if len(payload.get('new_password', '')) < 8: raise HTTPException(422, 'Password must be at least 8 characters.')
-    hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=? where id=?', (hashed, salt, teacher['id'])); db.execute('delete from sessions where teacher_id=?', (teacher['id'],)); token = new_session(db, teacher['id']); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'ok': True}
+    hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=?,force_password_change=0 where id=?', (hashed, salt, teacher['id'])); db.execute('delete from sessions where teacher_id=?', (teacher['id'],)); token = new_session(db, teacher['id']); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'ok': True}
 
 @app.post('/api/auth/forgot-password')
 def forgot_password(payload: dict):
@@ -415,7 +415,10 @@ async def read_submissions(paper_id: str, request: Request):
     paper = owned_paper(request, paper_id)
     if not paper: raise HTTPException(404, 'Paper not found')
     questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []
-    for sheet in rows('select * from sheet_files where paper_id=? and roll_no is not null', (paper_id,)):
+    sheets = rows('select * from sheet_files where paper_id=? and roll_no is not null', (paper_id,))
+    for index, sheet in enumerate(sheets):
+        if not budget_remaining(teacher['id']):
+            return {'paper_id': paper_id, 'readings': readings, 'message': f'Daily limit reached. {index} of {len(sheets)} sheets read; the rest can be read tomorrow.'}
         started = time.perf_counter()
         result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), 'Transcribe every question option.'])
         usage = record(run_id, 'answer_sheet_reader', result.usage, started, teacher['id'])
@@ -498,12 +501,15 @@ def insight(check_id: str, request: Request):
 @app.post('/api/checks/{check_id}/next-steps')
 def next_steps(check_id: str, request: Request):
     owned_check(request, check_id)
-    return generate_next_steps(check_id, require_teacher(request)['id'])
+    teacher = require_teacher(request)
+    if not budget_remaining(teacher['id']): raise HTTPException(429, "You've used today's limit. It resets at midnight.")
+    return generate_next_steps(check_id, teacher['id'])
 
 @app.post('/api/checks/{check_id}/resources/{kind}')
 async def generate_resources(check_id: str, kind: str, request: Request):
     check = owned_check(request, check_id)
     teacher = require_teacher(request)
+    if not budget_remaining(teacher['id']): raise HTTPException(429, "You've used today's limit. It resets at midnight.")
     if kind not in {'worksheets', 'meeting_plans'}: raise HTTPException(422, 'Unknown resource type.')
     insight = analyze_results(check_id); rolls = []
     if kind == 'meeting_plans':
@@ -577,4 +583,23 @@ def admin_pilot(request: Request):
         teacher['sheets_uploaded'] = one('select count(*) as count from sheet_files where teacher_id=?', (teacher['id'],))['count']
         teacher['cost_total'] = one('select coalesce(sum(cost_usd),0) as total from llm_calls where teacher_id=?', (teacher['id'],))['total']
     return {'teachers': teachers}
+
+@app.post('/admin/pilot/{teacher_id}/reset-password')
+def admin_reset_password(teacher_id: str, request: Request):
+    if not ADMIN_CODE or request.headers.get('X-Admin-Code') != ADMIN_CODE: raise HTTPException(401, 'Admin access required.')
+    teacher = one('select id from teachers where id=?', (teacher_id,))
+    if not teacher: raise HTTPException(404, 'Teacher not found.')
+    import secrets
+    temporary = secrets.token_urlsafe(9)
+    hashed, salt = password_hash(temporary); db = conn(); db.execute('update teachers set password_hash=?,password_salt=?,force_password_change=1 where id=?', (hashed, salt, teacher_id)); db.execute('delete from sessions where teacher_id=?', (teacher_id,)); db.commit(); db.close()
+    return {'temporary_password': temporary}
+
+@app.get('/admin/pilot.csv')
+def admin_csv(request: Request):
+    if not ADMIN_CODE or request.headers.get('X-Admin-Code') != ADMIN_CODE: raise HTTPException(401, 'Admin access required.')
+    import csv, io
+    output = io.StringIO(); writer = csv.writer(output); writer.writerow(['username', 'email', 'created_at', 'last_active', 'classes', 'lessons', 'sheets_uploaded', 'cost_total'])
+    for teacher in admin_pilot(request)['teachers']: writer.writerow([teacher[key] for key in ('username','email','created_at','last_active','classes','lessons','sheets_uploaded','cost_total')])
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(output.getvalue(), media_type='text/csv', headers={'Content-Disposition':'attachment; filename=saathi-teachers.csv'})
 app.mount('/', StaticFiles(directory=str(ROOT / "static"), html=True), name='static')
