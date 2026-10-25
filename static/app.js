@@ -355,19 +355,29 @@ function showRollPreview(rows) {
 }
 function buildSimpleCheckFlow() {
   const view = $('check-view');
-  view.replaceChildren();
+  if (document.getElementById('check-step-submissions')) return;
   const title = document.createElement('div'); title.className = 'hero';
   addText(title, 'p', 'Check learning', 'eyebrow'); addText(title, 'h2', 'Understand what your class knows.');
   addText(title, 'p', 'Upload the class roll and student work. Saathi will organise the evidence and show class, student, and question mastery.'); view.append(title);
 
-  const roll = document.createElement('section'); roll.className = 'card check-flow-card';
-  addText(roll, 'h2', '① Upload the class roll');
-  addText(roll, 'p', 'Upload one PDF with three clearly labelled sections: High readiness, Mid readiness, and Low readiness.');
+  const roll = document.querySelector('#check-view > .card');
+  if (roll) { const heading = roll.querySelector('h2'); if (heading) heading.textContent = '① Class roll'; }
   const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
   const rollStatus = addText(roll, 'p', 'No class roll uploaded.', 'upload-status'); rollInput.addEventListener('change', () => { rollStatus.textContent = rollInput.files[0] ? `Ready: ${rollInput.files[0].name}` : 'No class roll uploaded.'; });
-  view.append(roll);
+  rollInput.addEventListener('change', async () => {
+    if (!rollInput.files[0]) return;
+    const form = new FormData(); form.append('file', rollInput.files[0]);
+    try {
+      const parsed = await getJson(`/api/classes/${selectedClass().id}/roll/upload-pdf`, {method:'POST', body:form});
+      state.rollPreviewRows = parsed.rows; state.rollPreviewInvalid = false; showRollPreview(parsed.rows);
+      const byLevel = Object.fromEntries(['low', 'mid', 'high'].map((level) => [level, parsed.rows.filter((row) => row.readiness_level === level).map((row) => row.first_name).join('\n')]));
+      $('roll-paste-low').value = byLevel.low; $('roll-paste-mid').value = byLevel.mid; $('roll-paste-high').value = byLevel.high;
+      rollStatus.textContent = 'Roll preview ready. Review the buckets, then save the roll.';
+    } catch (error) { rollStatus.textContent = error.message; }
+  });
+  if (!roll) view.append(roll);
 
-  const submissions = document.createElement('section'); submissions.className = 'card check-flow-card';
+  const submissions = document.createElement('section'); submissions.id = 'check-step-submissions'; submissions.className = 'card check-flow-card';
   addText(submissions, 'h2', '② How are your submissions organized?');
   addText(submissions, 'p', 'Choose the format that matches the files you have.');
   const choices = document.createElement('div'); choices.className = 'submission-choices'; submissions.append(choices);
@@ -389,11 +399,11 @@ function buildSimpleCheckFlow() {
     }); choices.append(card);
   }); view.append(submissions);
 
-  const analysis = document.createElement('section'); analysis.className = 'card check-flow-card';
+  const analysis = document.createElement('section'); analysis.id = 'check-step-analysis'; analysis.className = 'card check-flow-card';
   addText(analysis, 'h2', '③ Class analysis'); addText(analysis, 'p', 'After the submissions are uploaded and confirmed, your results will appear here.');
   const metrics = document.createElement('div'); metrics.className = 'analysis-metrics';
   [['Class average', '—'], ['Student-wise mastery', 'Upload submissions to calculate'], ['Question-wise mastery', 'Upload submissions to calculate']].forEach(([label, value]) => { const metric = document.createElement('div'); metric.className = 'analysis-metric'; addText(metric, 'strong', label); addText(metric, 'span', value); metrics.append(metric); });
-  analysis.append(metrics); view.append(analysis);
+  analysis.append(metrics); const next = addText(analysis, 'button', 'See what to do next →', 'primary'); next.type = 'button'; next.addEventListener('click', () => document.querySelector('[data-view="next-view"]').click()); view.append(analysis);
 }
 function labelCheckSteps() {
   const cards = document.querySelectorAll('#check-view > .card');

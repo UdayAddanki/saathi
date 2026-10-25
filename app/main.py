@@ -17,6 +17,7 @@ from .config import ROOT
 from .diagnosis import analyze_results
 from .models import ResultsRequest
 from .roll import parse_roll_file, normalize_level
+from .roll_pdf import parse_roll_pdf
 from .marking import mark_answer
 
 @asynccontextmanager
@@ -86,6 +87,15 @@ async def upload_roll(class_id: str, request: Request, file: UploadFile = File(.
     authorize(request)
     parsed = parse_roll_file(await file.read(2 * 1024 * 1024 + 1), file.filename or '')
     return {'rows': parsed, 'valid': all(item['valid'] for item in parsed)}
+
+@app.post('/api/classes/{class_id}/roll/upload-pdf')
+async def upload_roll_pdf(class_id: str, request: Request, file: UploadFile = File(...)):
+    authorize(request)
+    try:
+        parsed = parse_roll_pdf(await file.read(10 * 1024 * 1024 + 1))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    return {'rows': parsed, 'valid': True}
 
 @app.post('/api/classes/{class_id}/roll/save')
 def save_roll(class_id: str, payload: list[dict], request: Request):
