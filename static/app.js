@@ -1,4 +1,4 @@
-const state = { boards: [], classes: [], currentResult: null };
+const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false };
 state.check = null;
 const $ = (id) => document.getElementById(id);
 
@@ -299,7 +299,7 @@ async function loadContext() {
   $('unit-goal').value = context.unit_goal || '';
 }
 
-$('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); }); $('subject-select').addEventListener('change', refreshChapters);
+$('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); if (!$('check-view').classList.contains('hidden')) loadRoll().catch((error) => showRollMessage(error.message, 'error')); }); $('subject-select').addEventListener('change', refreshChapters);
 $('topic-input').addEventListener('input', (event) => $('topic-count').textContent = `${event.target.value.length} / 120`);
 $('note-input').addEventListener('input', (event) => $('note-count').textContent = `${event.target.value.length} / 500`);
 $('current-situation').addEventListener('input', (event) => $('situation-count').textContent = `${event.target.value.length} / 500`);
@@ -332,12 +332,31 @@ async function loadRoll() {
     roll.filter((child) => child.readiness_level === level).forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name || 'Unnamed'}`));
   }
 }
+function showRollMessage(message, kind = 'success') {
+  let box = $('roll-message');
+  if (!box) { box = document.createElement('p'); box.id = 'roll-message'; $('roll-columns').after(box); }
+  box.textContent = message;
+  box.className = `roll-message ${kind}`;
+}
+function showRollPreview(rows) {
+  const columns = $('roll-columns'); columns.replaceChildren();
+  for (const level of ['low', 'mid', 'high']) {
+    const section = addText(columns, 'section', '', `roll-column roll-${level}`);
+    const members = rows.filter((child) => child.readiness_level === level && child.valid);
+    addText(section, 'h3', `${level[0].toUpperCase() + level.slice(1)} readiness · ${members.length}`);
+    members.forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name}`));
+  }
+}
 document.querySelector('[data-view="check-view"]').addEventListener('click', loadRoll);
 $('download-roll').addEventListener('click', (event) => { event.preventDefault(); window.location.href = `/api/classes/${selectedClass().id}/roll-template.csv`; });
 $('upload-roll').addEventListener('click', async () => {
   const file = $('roll-file').files[0]; if (!file) return;
   const form = new FormData(); form.append('file', file);
-  const preview = await getJson(`/api/classes/${selectedClass().id}/roll/upload`, {method:'POST', body:form});
+  try {
+  const response = await getJson(`/api/classes/${selectedClass().id}/roll/upload`, {method:'POST', body:form});
+  const preview = response.rows;
+  state.rollPreviewInvalid = preview.some((x) => !x.valid);
+  showRollPreview(preview);
   $('roll-paste-low').value = preview.filter((x) => x.readiness_level === 'low').map((x) => x.first_name).join('\n');
   $('roll-paste-mid').value = preview.filter((x) => x.readiness_level === 'mid').map((x) => x.first_name).join('\n');
   $('roll-paste-high').value = preview.filter((x) => x.readiness_level === 'high').map((x) => x.first_name).join('\n');
@@ -352,11 +371,15 @@ $('upload-roll').addEventListener('click', async () => {
   }
   review.classList.remove('hidden');
   $('save-roll').textContent = 'Save these buckets';
-  if (preview.some((x) => !x.valid)) alert('Some rows need a name or readiness level before saving.');
+  if (state.rollPreviewInvalid) showRollMessage('Review needed: some rows are missing a name or have an invalid readiness level. Nothing has been saved.', 'error');
+  else showRollMessage('Preview ready: please check the three buckets, then save the roll.', 'success');
+  } catch (error) { showRollMessage(error.message, 'error'); }
 });
 $('save-roll').addEventListener('click', async () => {
+  if (state.rollPreviewInvalid) { showRollMessage('Fix the flagged upload rows before saving. Nothing has been saved.', 'error'); return; }
   const names = [['low', $('roll-paste-low').value], ['mid', $('roll-paste-mid').value], ['high', $('roll-paste-high').value]];
   const roll = []; let number = 1;
   names.forEach(([level, text]) => text.split('\n').map((name) => name.trim()).filter(Boolean).forEach((first_name) => roll.push({roll_no:number++, first_name, readiness_level:level})));
-  await getJson(`/api/classes/${selectedClass().id}/roll/save`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(roll)}); await loadRoll();
+  try { await getJson(`/api/classes/${selectedClass().id}/roll/save`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(roll)}); await loadRoll(); showRollMessage(`Roll saved: ${roll.length} children organised into Low, Mid, and High readiness.`); }
+  catch (error) { showRollMessage(error.message, 'error'); }
 });
