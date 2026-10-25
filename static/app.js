@@ -431,6 +431,7 @@ function buildSimpleCheckFlow() {
   const roll = document.querySelector('#check-view > .card');
   if (roll) { const heading = roll.querySelector('h2'); if (heading) heading.textContent = '① Class roll'; }
   const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
+  roll.querySelector('.roll-actions')?.remove(); roll.querySelectorAll('#roll-paste-low, #roll-paste-mid, #roll-paste-high, #save-roll')?.forEach((node) => node.remove());
   const rollStatus = addText(roll, 'p', 'No class roll uploaded.', 'upload-status'); rollInput.addEventListener('change', () => { rollStatus.textContent = rollInput.files[0] ? `Ready: ${rollInput.files[0].name}` : 'No class roll uploaded.'; });
   rollInput.addEventListener('change', async () => {
     if (!rollInput.files[0]) return;
