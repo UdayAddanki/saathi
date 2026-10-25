@@ -291,11 +291,12 @@ function collectClassCounts() {
 }
 
 async function load() {
+  if (location.pathname === '/reset') { $('app-main').classList.add('hidden'); document.querySelector('.topbar').classList.add('hidden'); $('auth-screen').classList.add('hidden'); $('reset-screen').classList.remove('hidden'); return; }
   const health = await getJson('/api/health');
-  if (health.access_required && !localStorage.getItem('saathi_access_code')) {
-    const code = window.prompt('Enter the Saathi access code');
-    if (code) localStorage.setItem('saathi_access_code', code);
-  }
+  state.demoMode = health.demo_mode;
+  if (health.demo_mode) $('demo-login').classList.remove('hidden');
+  if (!document.cookie.includes('saathi_session=')) { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); return; }
+  const me = await getJson('/api/auth/me'); $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || '';
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
   state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
@@ -312,6 +313,16 @@ async function loadContext() {
 }
 
 $('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); if (!$('check-view').classList.contains('hidden')) loadRoll().catch((error) => showRollMessage(error.message, 'error')); }); $('subject-select').addEventListener('change', refreshChapters);
+$('account-button').onclick = () => $('account-dialog').showModal();
+$('save-profile').onclick = async () => { const r = await fetch('/api/auth/profile', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:$('account-name').value,school:$('account-school').value})}); $('account-message').textContent = r.ok ? 'Profile saved.' : 'Could not save profile.'; };
+$('change-password').onclick = async () => { const r = await fetch('/api/auth/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('current-password').value,new_password:$('new-password').value})}); $('account-message').textContent = r.ok ? 'Password changed.' : ((await r.json()).detail || 'Could not change password.'); };
+$('logout-button').onclick = async () => { await fetch('/api/auth/logout',{method:'POST'}); location.reload(); };
+$('reset-form').onsubmit = async (event) => { event.preventDefault(); const token = new URLSearchParams(location.search).get('token') || ''; if ($('reset-password').value !== $('reset-confirm').value) { $('reset-message').textContent = 'Passwords do not match.'; return; } const response = await fetch('/api/auth/reset-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token,new_password:$('reset-password').value})}); if (!response.ok) { $('reset-message').textContent = response.status === 400 ? 'This link has expired. Request a new one.' : 'Could not reset the password.'; return; } $('reset-message').textContent = 'Password reset. You can now log in.'; };
+function showAuth(form) { $('login-form').classList.toggle('hidden', form !== 'login'); $('signup-form').classList.toggle('hidden', form !== 'signup'); }
+$('show-login').onclick = () => showAuth('login'); $('show-signup').onclick = () => showAuth('signup');
+$('demo-login').onclick = async () => { await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'demo',password:'saathi-demo'})}); location.reload(); };
+$('login-form').onsubmit = async (event) => { event.preventDefault(); try { const response = await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('login-username').value,password:$('login-password').value})}); if (!response.ok) throw new Error('Wrong username or password.'); location.reload(); } catch (error) { $('login-error').textContent = error.message; } };
+$('signup-form').onsubmit = async (event) => { event.preventDefault(); if ($('signup-password').value !== $('signup-confirm').value) { $('signup-error').textContent = 'Passwords do not match.'; return; } try { const response = await fetch('/api/auth/signup', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('signup-username').value,password:$('signup-password').value,email:$('signup-email').value,invite_code:$('signup-invite').value})}); if (!response.ok) throw new Error((await response.json()).detail || 'Could not create account.'); location.reload(); } catch (error) { $('signup-error').textContent = error.message; } };
 $('topic-input').addEventListener('input', (event) => $('topic-count').textContent = `${event.target.value.length} / 120`);
 $('note-input').addEventListener('input', (event) => $('note-count').textContent = `${event.target.value.length} / 500`);
 $('current-situation').addEventListener('input', (event) => $('situation-count').textContent = `${event.target.value.length} / 500`);

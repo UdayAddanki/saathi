@@ -16,6 +16,10 @@ python run.py
 
 Open http://localhost:8000. Run tests with `pytest`.
 
+### Accounts and administration
+
+With `DEMO_MODE=true`, the welcome page offers **Try the demo account**. Locally, teachers can create an account with a username, password and email. Online deployments can require an `INVITE_CODE`. Set `ADMIN_CODE` to protect `/admin/pilot`, which shows pilot usage and reset-log links. For emailed password resets, configure SMTP values; Gmail requires an app password rather than the normal account password.
+
 Only `gpt-6-luna` through Portkey is configured. The SQLite database is created automatically. Chapter lists are empty unless a chapter can be verified from an official textbook source; teachers can type any topic.
 
 ## Try it with sample data

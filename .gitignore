@@ -2,6 +2,7 @@
 *.db
 __pycache__/
 .venv/
+.DS_Store
 *.pyc
 saathi.db
 .pytest_cache/
