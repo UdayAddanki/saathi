@@ -32,9 +32,11 @@ async function getJson(url, options) {
     'X-Saathi-Access-Code': localStorage.getItem('saathi_access_code') || ''
   });
   const response = await fetch(url, options);
-  const data = await response.json();
+  const body = await response.text();
+  let data = {};
+  try { data = body ? JSON.parse(body) : {}; } catch (_) { data = {detail: body}; }
   if (response.status === 401) { sessionStorage.setItem('saathi-plan-draft', JSON.stringify(Object.fromEntries(['current-situation','classroom-vision','unit-goal','chapter-input','topic-input','note-input'].map((id) => [id, $(id)?.value || ''])))); document.querySelector('#auth-screen')?.classList.remove('hidden'); showAuth('login'); const error = new Error('Please log in again'); error.sessionExpired = true; throw error; }
-  if (!response.ok) throw new Error(data.detail || 'The request could not be completed.');
+  if (!response.ok) throw new Error(typeof data.detail === 'string' && data.detail ? data.detail : (body || 'The request could not be completed.'));
   return data;
 }
 
