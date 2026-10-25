@@ -1,4 +1,4 @@
-const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false };
+const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false, rollPreviewRows: null };
 state.check = null;
 const $ = (id) => document.getElementById(id);
 
@@ -331,6 +331,11 @@ async function loadRoll() {
     addText(section, 'h3', `${level[0].toUpperCase() + level.slice(1)} readiness`);
     roll.filter((child) => child.readiness_level === level).forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name || 'Unnamed'}`));
   }
+  let table = $('saved-roll-table');
+  if (!table) { table = document.createElement('table'); table.id = 'saved-roll-table'; $('roll-columns').after(table); }
+  table.replaceChildren();
+  const header = table.insertRow(); ['Roll number', 'Name', 'Readiness level'].forEach((label) => { const cell = document.createElement('th'); cell.textContent = label; header.append(cell); });
+  roll.forEach((child) => { const row = table.insertRow(); [child.roll_no, child.first_name || '', child.readiness_level].forEach((value) => { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }); });
 }
 function showRollMessage(message, kind = 'success') {
   let box = $('roll-message');
@@ -355,6 +360,7 @@ $('upload-roll').addEventListener('click', async () => {
   try {
   const response = await getJson(`/api/classes/${selectedClass().id}/roll/upload`, {method:'POST', body:form});
   const preview = response.rows;
+  state.rollPreviewRows = preview;
   state.rollPreviewInvalid = preview.some((x) => !x.valid);
   showRollPreview(preview);
   $('roll-paste-low').value = preview.filter((x) => x.readiness_level === 'low').map((x) => x.first_name).join('\n');
@@ -376,10 +382,25 @@ $('upload-roll').addEventListener('click', async () => {
   } catch (error) { showRollMessage(error.message, 'error'); }
 });
 $('save-roll').addEventListener('click', async () => {
+  if (!$('roll-file').files[0] && ![$('roll-paste-low'), $('roll-paste-mid'), $('roll-paste-high')].some((field) => field.value.trim())) {
+    showRollMessage('Choose a file and press Preview, or type names into the three boxes.', 'error'); return;
+  }
+  if ($('roll-file').files[0] && !state.rollPreviewRows) {
+    showRollMessage('Previewing your file first…', 'success'); $('upload-roll').click(); return;
+  }
   if (state.rollPreviewInvalid) { showRollMessage('Fix the flagged upload rows before saving. Nothing has been saved.', 'error'); return; }
   const names = [['low', $('roll-paste-low').value], ['mid', $('roll-paste-mid').value], ['high', $('roll-paste-high').value]];
-  const roll = []; let number = 1;
-  names.forEach(([level, text]) => text.split('\n').map((name) => name.trim()).filter(Boolean).forEach((first_name) => roll.push({roll_no:number++, first_name, readiness_level:level})));
+  let roll;
+  if (state.rollPreviewRows) {
+    const levelsByName = new Map(); names.forEach(([level, text]) => text.split('\n').map((name) => name.trim()).filter(Boolean).forEach((name) => levelsByName.set(name, level)));
+    roll = state.rollPreviewRows.filter((item) => item.valid).map((item) => ({roll_no: Number(item.roll_no), first_name: item.first_name, readiness_level: levelsByName.get(String(item.first_name).trim()) || item.readiness_level}));
+  } else {
+    roll = []; let number = 1;
+    names.forEach(([level, text]) => text.split('\n').map((name) => name.trim()).filter(Boolean).forEach((first_name) => roll.push({roll_no:number++, first_name, readiness_level:level})));
+  }
   try { await getJson(`/api/classes/${selectedClass().id}/roll/save`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(roll)}); await loadRoll(); showRollMessage(`Roll saved: ${roll.length} children organised into Low, Mid, and High readiness.`); }
   catch (error) { showRollMessage(error.message, 'error'); }
 });
+[$('roll-paste-low'), $('roll-paste-mid'), $('roll-paste-high')].forEach((field) => field.addEventListener('input', () => {
+  if (!$('roll-file').files[0]) state.rollPreviewRows = null;
+}));

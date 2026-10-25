@@ -90,11 +90,21 @@ async def upload_roll(class_id: str, request: Request, file: UploadFile = File(.
 @app.post('/api/classes/{class_id}/roll/save')
 def save_roll(class_id: str, payload: list[dict], request: Request):
     authorize(request)
-    if any(normalize_level(item.get('readiness_level')) is None for item in payload):
-        raise HTTPException(422, 'Every child needs Low, Mid, or High readiness.')
     import datetime
-    if not payload or any(not item.get('first_name') or normalize_level(item.get('readiness_level')) is None for item in payload):
-        raise HTTPException(422, 'Every child needs a name and Low, Mid, or High readiness level.')
+    if not payload:
+        raise HTTPException(422, 'Choose a file and press Preview, or type names into the three boxes.')
+    seen = set()
+    for item in payload:
+        roll_no = item.get('roll_no')
+        if not isinstance(roll_no, int) or isinstance(roll_no, bool) or roll_no <= 0:
+            raise HTTPException(422, f'Roll number must be a positive integer (problem at roll {roll_no or "blank"}).')
+        if roll_no in seen:
+            raise HTTPException(422, f'Duplicate roll number {roll_no}. Each child must have a unique roll number.')
+        seen.add(roll_no)
+        if not item.get('first_name') or not str(item.get('first_name')).strip():
+            raise HTTPException(422, f'Missing name on roll {roll_no}.')
+        if normalize_level(item.get('readiness_level')) is None:
+            raise HTTPException(422, f'Unknown readiness level on roll {roll_no}. Use Low, Mid, or High.')
     db = conn(); db.execute('delete from students where class_id=?', (class_id,))
     for index, item in enumerate(payload, 1):
         db.execute('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)', (class_id, index, item.get('first_name'), normalize_level(item.get('readiness_level')), datetime.datetime.now(datetime.timezone.utc).isoformat()))
