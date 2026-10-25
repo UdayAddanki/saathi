@@ -28,6 +28,20 @@ from pydantic_ai import BinaryContent
 from .usage import record
 from .agents.resources import resource_builder
 
+def match_submission_name(data: bytes, filename: str, students: dict[int, dict], suffix: str) -> int | None:
+    """Match a typed PDF's printed child name locally; never send the name to a model."""
+    if suffix != 'pdf':
+        return None
+    try:
+        from pypdf import PdfReader
+        import io
+        text = '\n'.join(page.extract_text() or '' for page in PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return None
+    matches = [roll_no for roll_no, child in students.items()
+               if child['first_name'] and re.search(rf'(?<!\\w){re.escape(str(child["first_name"]))}(?!\\w)', text, re.I)]
+    return matches[0] if len(matches) == 1 else None
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
@@ -416,6 +430,8 @@ async def upload_submissions(check_id: str, request: Request, files: List[Upload
         data = await file.read(10 * 1024 * 1024 + 1)
         if len(data) > 10 * 1024 * 1024: raise HTTPException(413, 'Each answer sheet must be 10 MB or smaller.')
         match = re.search(r'(?:roll[_ -]?)?(\d+)', file.filename or '', re.I); roll_no = int(match.group(1)) if match else None
+        if roll_no not in students:
+            roll_no = match_submission_name(data, file.filename or '', students, suffix)
         stored = directory / f'{uuid.uuid4().hex}.{suffix}'; stored.write_bytes(data)
         db = conn(); file_id = uuid.uuid4().hex; db.execute('insert into sheet_files(id,paper_id,roll_no,page_number,mime_type,path,size,teacher_id) values(?,?,?,?,?,?,?,?)', (file_id, paper_id, roll_no if roll_no in students else None, 1, suffix, str(stored), len(data), teacher['id'])); db.commit(); db.close()
         output.append({'file_id': file_id, 'filename': file.filename, 'roll_no': roll_no if roll_no in students else None, 'child': students.get(roll_no), 'status': 'Uploaded' if roll_no in students else 'Needs teacher assignment'})

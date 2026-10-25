@@ -451,7 +451,7 @@ function buildSimpleCheckFlow() {
   const uploadArea = document.createElement('div'); uploadArea.className = 'submission-upload hidden'; submissions.append(uploadArea);
   const cards = [
     ['each-student', 'Each student is one file', 'Upload a file for each student. You can upload many at once.', 'Upload one file per student. You can add more files to this same assignment later.', 'multiple'],
-    ['all-students', 'All students in one file', 'Upload a single file containing all student submissions.', 'Upload the document or import from Google Drive', 'single']
+    ['all-students', 'All students in one file', 'Upload a PDF containing completed answer sheets. Each sheet should show the child’s name from the class roll.', 'Upload the document or import from Google Drive', 'single']
   ];
   cards.forEach(([id, heading, description, direction, mode]) => {
     const card = document.createElement('button'); card.type = 'button'; card.className = 'submission-card'; card.dataset.mode = mode;
