@@ -1,6 +1,7 @@
 const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false, rollPreviewRows: null };
 state.check = null;
 const $ = (id) => document.getElementById(id);
+const isMcqCheck = (check) => check.check_type === 'mcq' || check.check_type === 'mcq_read_aloud';
 
 function addText(parent, tag, text, className = '') {
   const element = document.createElement(tag);
@@ -78,7 +79,7 @@ function renderUsageStrip(result) {
 }
 
 function renderCheck(parent, result) {
-  addText(parent, 'h3', result.check_type === 'mcq' ? 'Exit check' : 'Observation check');
+  addText(parent, 'h3', isMcqCheck(result.check) ? 'Answer check' : 'Saved observation check (read-only)');
   const toggle = document.createElement('button');
   toggle.className = 'secondary';
   toggle.textContent = 'Show common errors';
@@ -178,11 +179,15 @@ async function loadCheck(checkId) {
   state.check = await getJson(`/api/checks/${checkId}`);
   const editor = $('check-editor'); editor.replaceChildren();
   const items = state.check.items.questions || state.check.items.tasks || [];
+  if (isMcqCheck(state.check)) {
+    const print = addText(editor, 'button', 'Print answer sheet', 'secondary');
+    print.onclick = () => { const popup = window.open('', 'saathi-answer-sheet'); if (!popup) return; popup.document.write('<!doctype html><title>Saathi answer sheet</title><style>body{font:20px sans-serif;padding:24px} .q{margin:24px 0} .o{display:inline-block;border:2px solid #111;padding:12px 20px;margin:8px}</style><h1>Roll number: __________________</h1>'); items.forEach((item, index) => { popup.document.write(`<div class="q"><strong>${index + 1}. ${item.stem}</strong><br>${Object.entries(item.options || {}).map(([key, value]) => `<span class="o">${key}. ${value}</span>`).join('')}</div>`); }); popup.document.write('</body></html>'); popup.document.close(); popup.print(); };
+  }
   state.check.itemsList = items;
   state.check.values = {};
   const header = addText(editor, 'div', '', 'response-header');
   addText(header, 'strong', 'Child / roll');
-  items.forEach((_, index) => addText(header, 'strong', state.check.check_type === 'mcq' ? `Q${index + 1}` : `T${index + 1}`));
+  items.forEach((_, index) => addText(header, 'strong', isMcqCheck(state.check) ? `Q${index + 1}` : `T${index + 1}`));
   state.check.students.forEach((student) => {
     const row = addText(editor, 'div', '', 'response-row');
     const identity = addText(row, 'div', '', 'child-identity');
@@ -192,14 +197,14 @@ async function loadCheck(checkId) {
     absent.onchange = () => {
       row.classList.toggle('row-absent', absent.checked);
       Object.values(state.check.values).filter((entry) => entry.roll === student.roll_no).forEach((entry) => {
-        entry.button.dataset.value = absent.checked ? 'absent' : (state.check.check_type === 'mcq' ? 'A' : 'got_it');
-        entry.button.textContent = absent.checked ? '—' : (state.check.check_type === 'mcq' ? 'A' : '✓');
+        entry.button.dataset.value = absent.checked ? 'absent' : (isMcqCheck(state.check) ? 'A' : 'got_it');
+        entry.button.textContent = absent.checked ? '—' : (isMcqCheck(state.check) ? 'A' : '✓');
       });
     };
     identity.appendChild(absent);
     items.forEach((item, index) => {
-      const button = addText(row, 'button', state.check.check_type === 'mcq' ? 'A' : '✓', 'response-cell');
-      button.dataset.value = state.check.check_type === 'mcq' ? 'A' : 'got_it';
+      const button = addText(row, 'button', isMcqCheck(state.check) ? 'A' : '✓', 'response-cell');
+      button.dataset.value = isMcqCheck(state.check) ? 'A' : 'got_it';
       button.onclick = () => cycleResponse(button, state.check.check_type);
       button.roll = student.roll_no; button.itemIndex = index;
       state.check.values[`${student.roll_no}-${index}`] = {button, roll: student.roll_no, item, index};
@@ -219,7 +224,7 @@ function addErrorPicker(row, button, item) {
 }
 
 function cycleResponse(button, type) {
-  const values = type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
+  const values = type === 'mcq_read_aloud' ? ['A', 'B', 'C'] : (type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet']);
   const next = values[(values.indexOf(button.dataset.value) + 1) % values.length];
   button.dataset.value = next; button.textContent = type === 'mcq' ? next : ({got_it:'✓', partly:'~', not_yet:'✗'}[next]);
   button.classList.toggle('wrong', next !== 'A' && next !== 'got_it');
@@ -231,7 +236,7 @@ function collectResponses() {
     const button = entry.button;
     const [roll_no, item_index] = key.split('-').map(Number);
     const response = {roll_no, item_index};
-    if (state.check.check_type === 'mcq') response.chosen_option = button.dataset.value;
+    if (isMcqCheck(state.check)) response.chosen_option = button.dataset.value;
     else { response.rating = button.dataset.value; response.error_id = button.errorId || null; }
     responses.push(response);
   });
@@ -268,7 +273,7 @@ function renderClassCounts() {
     const card = addText(editor, 'div', '', 'count-card');
     addText(card, 'strong', `${state.check.check_type === 'mcq' ? 'Question' : 'Task'} ${index + 1}`);
     const inputs = {};
-    const labels = state.check.check_type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
+    const labels = isMcqCheck(state.check) ? Object.keys(item.options || {'A':'','B':'','C':'','D':''}) : ['got_it', 'partly', 'not_yet'];
     labels.forEach((label) => { const wrapper = addText(card, 'label', label); const input = document.createElement('input'); input.type = 'number'; input.min = 0; input.value = 0; input.dataset.label = label; wrapper.appendChild(input); inputs[label] = input; });
     state.check.countInputs.push(inputs);
   });
