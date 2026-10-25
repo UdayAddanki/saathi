@@ -33,6 +33,14 @@ def signup(page, base, username, email):
     page.locator('#signup-consent').check(); page.locator('#signup-form button').click(); page.wait_for_timeout(400)
     if page.locator('#class-select').count() != 1: raise AssertionError(f'{username}: signup did not enter the app at {page.url}')
 
+def auth_validation_steps(page, base):
+    page.request.post(base + '/api/auth/logout'); page.goto(base); page.locator('#show-signup').click(); page.locator('#signup-username').fill('teacher-a-live'); page.locator('#signup-username').evaluate("node => node.removeAttribute('pattern')"); page.locator('#signup-password').fill('Strong-password-123'); page.locator('#signup-confirm').fill('Strong-password-123'); page.locator('#signup-email').fill('duplicate@example.com'); page.locator('#signup-consent').check(); page.locator('#signup-form button').click(); page.wait_for_timeout(500)
+    duplicate_message=page.locator('#signup-error').text_content(); print(f'[INFO] duplicate signup message: {duplicate_message!r}', flush=True)
+    if 'taken' not in duplicate_message.lower(): raise AssertionError(f'duplicate username message was not shown: {duplicate_message!r}')
+    page.locator('#show-login').click(); page.locator('[data-testid="forgot-link"]').click(); page.locator('[data-testid="forgot-identity"]').fill('teacher-a-live@example.com'); page.locator('[data-testid="forgot-submit"]').click(); page.wait_for_timeout(300)
+    if 'If an account exists' not in page.locator('[data-testid="forgot-message"]').text_content(): raise AssertionError('forgot-password confirmation was not shown')
+    return result('auth validation', True, 'Duplicate username and Forgot password checks passed.')
+
 def create_class(page, base, grade, board, section):
     data = {'board': board, 'grade': grade, 'section': section, 'class_size': 38 if grade == 3 else 20, 'period_minutes': 40, 'resources': []}
     return require(page.request.post(base + '/api/classes', data=data), 'create class')['id']
@@ -108,7 +116,7 @@ def run(fake):
                 for page in (pa, pb):
                     page.on('pageerror', lambda error: browser_errors.append(f'pageerror: {error}'))
                     page.on('console', lambda message: browser_errors.append(f'console {message.type}: {message.text}') if message.type == 'error' and '401 (Unauthorized)' not in message.text and 'Pattern attribute value' not in message.text else None)
-                signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.')); require(pa.request.post(base+'/api/auth/setup-complete'),'wizard skip'); records.append(result('wizard',True,'Setup wizard skip persisted.'))
+                signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.')); records.append(auth_validation_steps(pa,base)); signup(pa,base,'teacher-a-live-2','teacher-a-live-2@example.com'); require(pa.request.post(base+'/api/auth/setup-complete'),'wizard skip'); records.append(result('wizard',True,'Setup wizard skip persisted.'))
                 classes={'a':create_class(pa,base,3,'TS_SCERT','A'),'b':create_class(pb,base,1,'NCERT','B')}; records.append(roll_step(pa,pb,base,classes)); plans=plans_step(pa,pb,base,classes,db_path,fake); records.append({k:v for k,v in plans.items() if k!='ids'}); ids=plans['ids']; records.append(ownership_step(pa,pb,base,classes,ids)); records.append(relogin(pa,base,classes['a'],ids['a'][0])); reset,reset_page=reset_step(pa,base,log_path); records.append(reset); pa.reload(); pa.wait_for_timeout(300); records.append(result('reload',True,'App remained visible after reload.')); pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(500); 
                 if 'hidden' in (pb.locator('#app-main').get_attribute('class') or ''): raise AssertionError('demo: app remains hidden after demo login')
                 records.append(result('demo',True,'Demo login completed and app is visible.'))

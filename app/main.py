@@ -115,8 +115,8 @@ def signup(payload: dict, response: Response):
     if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email): raise HTTPException(422, 'Enter a valid email address.')
     if len(password) < 8: raise HTTPException(422, 'Password must be at least 8 characters.')
     if INVITE_CODE and payload.get('invite_code') != INVITE_CODE: raise HTTPException(403, 'That invite code is not valid.')
-    if one('select id from teachers where lower(username)=?', (username,)): raise HTTPException(409, 'That username is already in use.')
-    if one('select id from teachers where lower(email)=?', (email,)): raise HTTPException(409, 'That email is already in use.')
+    if one('select id from teachers where lower(username)=?', (username,)): raise HTTPException(409, 'That username is taken.')
+    if one('select id from teachers where lower(email)=?', (email,)): raise HTTPException(409, 'That email is already registered.')
     hashed, salt = password_hash(password); teacher_id = str(uuid.uuid4()); db = conn(); db.execute('insert into teachers(id,username,email,password_hash,password_salt,created_at,last_active,force_password_change) values(?,?,?,?,?,?,?,?)', (teacher_id, username, email, hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0)); token = new_session(db, teacher_id); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax', secure=bool(request_is_https(response)))
     return {'username': username}
 

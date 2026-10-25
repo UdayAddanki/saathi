@@ -3,6 +3,8 @@ state.check = null;
 const $ = (id) => document.getElementById(id);
 [['signup-username','signup-username'],['signup-password','signup-password'],['signup-confirm','signup-confirm'],['signup-email','signup-email'],['signup-consent','signup-consent'],['login-username','login-username'],['login-password','login-password'],['reset-password','reset-password'],['reset-confirm','reset-confirm'],['reset-message','reset-message']].forEach(([id, testid]) => { const node = $(id); if (node) node.dataset.testid = testid; });
 const resetSubmit = document.querySelector('#reset-form button'); if (resetSubmit) resetSubmit.dataset.testid = 'reset-submit';
+if ($('signup-username')) $('signup-username').setAttribute('pattern', '[-A-Za-z0-9._]{3,30}');
+const forgotLink = document.createElement('button'); forgotLink.type='button'; forgotLink.textContent='Forgot password?'; forgotLink.dataset.testid='forgot-link'; forgotLink.className='secondary'; document.getElementById('login-form')?.append(forgotLink);
 const isMcqCheck = (check) => check.check_type === 'mcq' || check.check_type === 'mcq_read_aloud';
 
 function addText(parent, tag, text, className = '') {
@@ -295,7 +297,7 @@ function collectClassCounts() {
 }
 
 async function load() {
-  if (location.pathname === '/reset') { $('app-main').classList.add('hidden'); document.querySelector('.topbar').classList.add('hidden'); $('auth-screen').classList.add('hidden'); $('reset-screen').classList.remove('hidden'); return; }
+  if (location.pathname === '/reset') { $('app-main').classList.add('hidden'); document.querySelector('.topbar').classList.add('hidden'); $('auth-screen').classList.add('hidden'); $('forgot-screen').classList.add('hidden'); $('reset-screen').classList.remove('hidden'); return; }
   const health = await getJson('/api/health');
   state.demoMode = health.demo_mode;
   if (health.demo_mode) $('demo-login').classList.remove('hidden');
@@ -330,6 +332,10 @@ function showAuth(form) { $('login-form').classList.toggle('hidden', form !== 'l
 $('show-login').onclick = () => showAuth('login'); $('show-signup').onclick = () => showAuth('signup');
 $('demo-login').onclick = async () => { const response = await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'demo',password:'saathi-demo'})}); if (response.ok) { await load(); } else { const data=await response.json(); $('login-error').textContent=data.detail || 'Could not log in.'; $('login-error').classList.remove('hidden'); } };
 $('login-form').onsubmit = async (event) => { event.preventDefault(); const response = await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('login-username').value,password:$('login-password').value})}); if (!response.ok) { const data=await response.json(); $('login-error').textContent=data.detail || 'Could not log in.'; $('login-error').classList.remove('hidden'); return; } $('login-error').textContent=''; $('login-error').classList.add('hidden'); await load(); };
+$('forgot-link').onclick = () => { $('auth-screen').classList.add('hidden'); $('forgot-screen').classList.remove('hidden'); };
+$('forgot-back').onclick = () => { $('forgot-screen').classList.add('hidden'); $('auth-screen').classList.remove('hidden'); showAuth('login'); };
+$('forgot-form').onsubmit = async (event) => { event.preventDefault(); const response=await fetch('/api/auth/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identity:$('forgot-identity').value})}); const data=await response.json(); $('forgot-message').textContent=response.ok ? `${data.message}. (Local mode: the reset link is in the server log)` : (data.detail || 'Please try again.'); $('forgot-message').classList.remove('hidden'); };
+$('signup-form').addEventListener('submit', (event) => { const username=$('signup-username').value.trim(); const password=$('signup-password').value; const confirm=$('signup-confirm').value; const email=$('signup-email').value.trim(); let message=''; if (!username) message='Username is required'; else if (!/^[A-Za-z0-9._-]{3,30}$/.test(username)) message='Username can only use letters, numbers, . _ -'; else if (password.length < 8) message='Password must be at least 8 characters'; else if (password !== confirm) message="Passwords don't match"; else if (!email) message='Email is required'; else if (!$('signup-consent').checked) message='Please tick the consent box'; if (message) { event.preventDefault(); event.stopImmediatePropagation(); $('signup-error').textContent=message; $('signup-error').classList.remove('hidden'); } }, true);
 $('signup-form').onsubmit = async (event) => { event.preventDefault(); if ($('signup-password').value !== $('signup-confirm').value) { $('signup-error').textContent = 'Passwords do not match.'; $('signup-error').classList.remove('hidden'); return; } const response = await fetch('/api/auth/signup', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('signup-username').value,password:$('signup-password').value,email:$('signup-email').value,invite_code:$('signup-invite').value})}); if (!response.ok) { const data=await response.json(); $('signup-error').textContent=data.detail || 'Could not create account.'; $('signup-error').classList.remove('hidden'); return; } $('signup-error').textContent=''; $('signup-error').classList.add('hidden'); await load(); };
 $('topic-input').addEventListener('input', (event) => $('topic-count').textContent = `${event.target.value.length} / 120`);
 $('note-input').addEventListener('input', (event) => $('note-count').textContent = `${event.target.value.length} / 500`);
