@@ -12,18 +12,21 @@ This file changes the Plan inputs, the `LessonPlan` structure, the planner and r
 
 1. **Class** (already exists; shows the grade prominently, e.g. "Grade 3 · Section A · Telangana"). The grade comes from the class.
 2. **Classroom context** (a collapsible card; filled once, then saved):
-   - **Current learning level:** quick choice *Most children below grade level / Mixed levels / Most at grade level*, plus an optional text box: "What can most children already do? Who is struggling, and with what?" (300 characters)
-   - **Unit goal:** "What do you want children to achieve by the end of this unit?" (300 characters)
+   - **Where are children currently?** One text box covering academic and holistic context: what children can do, who is struggling, their interests, relationships, confidence, language, and support needs (500 characters).
+   - **What is your classroom vision?** One text box describing the kind of learners and classroom community the teacher wants to build (300 characters).
+   - **What do you intend to achieve in this unit?** The unit goal (300 characters).
    - Saved **once per class** (one context for the whole class, used for every subject) and pre-filled for every lesson in that class, with an **Edit** link. Show "Last updated <date>". Ask for it the first time a class is used. The Add class form can also collect it, as an optional last step.
 3. **Subject:** as now (English, Mathematics; EVS for Grades 3–5).
-4. **Chapter name:** a text input (120 characters). If verified chapters exist in `boards.json` for this board, grade, and subject, show them as suggestions (a `<datalist>`), but always allow typing.
+4. **Chapter name:** a text input (120 characters). If verified chapters exist in `boards.json` for this board, grade, and subject, show them as suggestions (a `<datalist>`), but always allow typing. Add an optional PDF chapter-document upload, validated as a PDF and capped at 10 MB.
 5. **Topic:** a text input (120 characters), e.g. "Reading 3-digit numbers using place value".
-6. **Lesson type:** four large tap cards, each with a one-line description:
+6. **Lesson type:** cards are the only selector; do not add a second lesson-type dropdown. Use five large tap cards, each with a one-line description:
    - **5-step lesson (I do · We do · You do):** teacher models, class practises together, children practise alone
    - **5E lesson:** Engage · Explore · Explain · Elaborate · Evaluate
    - **Project-based learning:** children work on a real project over several days
    - **Experiential learning:** children learn by doing something, then reflect on it
-   - For **Project-based** and **Experiential**, show two extra fields: "Day __ of __" (default 1 of 1) and, for projects, an optional "Project idea or driving question" (200 characters).
+   - **5 Magic Questions:** Purpose · Integration · Mastery · Methods · Partnership
+   - Experiential learning is always one lesson: force Day 1 of 1 and do not offer a multi-day option.
+   - For Project-based learning, show a scope choice: **Today’s lesson only** or **Whole project plan**, plus Day __ of __ and an optional Project idea or driving question (200 characters).
 7. **Differentiated lesson?** A toggle, off by default. When it's on, the teacher picks **one or more** ways to differentiate (tap chips, with a one-line explanation each):
    - **Content:** *what* children learn: the same objective at different levels of difficulty, or different materials for each level (e.g. 2-digit numbers for the support group, 3-digit for on level, 4-digit for challenge)
    - **Process:** *how* children learn it: different activities, support, grouping, or amount of help for each level (e.g. objects and teacher help for support, pair work for on level, a puzzle for challenge)
@@ -32,14 +35,14 @@ This file changes the Plan inputs, the `LessonPlan` structure, the planner and r
 8. **Note for Saathi** (optional, as now).
 9. **Prepare lesson.**
 
-Remove the old empty "Chapter or topic" dropdown. All typed fields are untrusted teacher text: keep the length caps, pass them wrapped in tags (`<learning_level>`, `<unit_goal>`, `<chapter>`, `<topic>`, `<project_idea>`, `<teacher_note>`), and run them through the existing prompt-injection check.
+Remove the old empty "Chapter or topic" dropdown. All typed fields are untrusted teacher text: keep the length caps, pass them wrapped in tags (`<current_situation>`, `<classroom_vision>`, `<unit_goal>`, `<chapter>`, `<topic>`, `<project_idea>`, `<teacher_note>`), and run them through the existing prompt-injection check.
 
 ## 2. The plan has two halves
 
 ### Half 1 — Lesson Vision
 
 - **Objective:** one clear, measurable sentence starting "Students will be able to …", for this one lesson.
-- **Why this objective:** 2–4 sentences linking it to the unit goal, the children's current level (from the classroom context), what comes before and after, and why it matters in children's lives.
+- **Why this objective:** 2–4 sentences linking it to the unit goal, where children currently are, the classroom vision, what comes before and after, and why it matters in children's lives.
 - **Assessment:** how the teacher will know the objective was met, meaning the end-of-lesson check (5 MCQs for Grades 3–5, observation tasks for Grades 1–2, as now), plus 1–2 quick checks during the lesson.
 - **Expected student response:** what a correct answer looks like (an example of what a child would say, write, or show), and the 2–3 most likely wrong responses with what each one tells the teacher. In curated mode, link these to misconception IDs.
 - **Key words:** 3–6 words, each with a child-friendly meaning and a way to introduce it (an example, object, or gesture).
@@ -56,6 +59,7 @@ Required steps per lesson type (names and order must match):
 | 5E | Engage → Explore → Explain → Elaborate → Evaluate |
 | Project-based learning | Launch or recap (driving question, where we are in the project) → Work time (children investigate, build, or create in groups) → Check-in (teacher circulates; quick critique) → Share (groups show progress) → Reflect + assess |
 | Experiential learning | Do (concrete experience) → Reflect (what happened? what did you notice?) → Think (what does it mean? the idea or rule) → Apply (try it in a new situation) → Assess |
+| 5 Magic Questions | Purpose → Integration → Mastery → Methods → Partnership |
 
 For project-based learning, also return a short **project outline**: the driving question, the final product, and one line per day for all the days, with today highlighted. For both project-based and experiential lessons, today's plan covers **only one period**.
 
@@ -92,10 +96,10 @@ After the steps, a short **"Make it work in your class"** section: differentiati
 
 ## 4. Agents
 
-- **Lesson Planner prompt:** rewrite for the two halves and the four lesson models. Include a short description of each model and what makes a good step in it; how to use the classroom context (pitch the objective to the current level, and point it at the unit goal); double-planning rules (teacher and student actions side by side, key questions word for word, children active in every step, no step that's just "teacher explains"); grade-band guidance and simple English as before. Add one short example exchange per lesson type.
+- **Lesson Planner prompt:** rewrite for the two halves and the five lesson models. Include a short description of each model and what makes a good step in it; how to use the three classroom-context answers to pitch the objective and point it at the unit goal; double-planning rules (teacher and student actions side by side, key questions word for word, children active in every step, no step that's just "teacher explains"); grade-band guidance and simple English as before. For 5 Magic Questions, define Purpose, Integration, Mastery, Methods, and Partnership as the five step names. Add one short example exchange per lesson type.
 - **Tools:** add `get_class_context(class_id)`. The planner calls it, along with the existing tools.
 - **Check Builder:** gets the plan's objective, key words, and expected student responses, so the end-of-lesson check measures exactly the objective. In curated mode, the wrong answers should match the expected wrong responses where possible.
-- **Reviewer:** add `must_fix` checks for: steps not matching the lesson type; a teacher action with no student response; an objective that isn't measurable or doesn't fit the grade; an assessment that doesn't measure the objective; a plan that ignores the stated learning level (e.g. far too hard for "most below grade level"); and, for differentiated lessons, levels that differ in the wrong way (e.g. "process" chosen but only the numbers change), different objectives per level, or a challenge level that's just "more of the same". Wording problems stay `suggestion`.
+- **Reviewer:** add `must_fix` checks for: steps not matching the lesson type; a teacher action with no student response; an objective that isn't measurable or doesn't fit the grade; an assessment that doesn't measure the objective; a plan that ignores the stated classroom situation or vision; and, for differentiated lessons, levels that differ in the wrong way (e.g. "process" chosen but only the numbers change), different objectives per level, or a challenge level that's just "more of the same". Wording problems stay `suggestion`.
 - Revision policy unchanged: only `must_fix`, and at most one revision.
 
 ## 5. Plan screen
@@ -123,8 +127,8 @@ After the steps, a short **"Make it work in your class"** section: differentiati
 
 1. `pytest` passes (all old and new tests).
 2. Real runs, one per lesson type, all with a classroom context filled in:
-   - Grade 3 Telangana, Mathematics, chapter "Numbers up to 999" (or similar), topic "place value of 3-digit numbers", **5-step**, level "Mixed levels"
-   - Grade 1 NCERT, Mathematics, topic "numbers 1 to 20", **Experiential**, level "Most below grade level"
+   - Grade 3 Telangana, Mathematics, chapter "Numbers up to 999" (or similar), topic "place value of 3-digit numbers", **5-step**, with all three classroom-context answers filled in
+   - Grade 1 NCERT, Mathematics, topic "numbers 1 to 20", **Experiential**, with all three classroom-context answers filled in
    - Grade 4 Telangana (create it), EVS, topic "Plants around us", **Project-based**, day 1 of 4
    - Grade 3 Telangana, English, topic "action words (verbs)", **5E**
    - Grade 3 Telangana, Mathematics, place value, **5-step, differentiated by process + product**, using groups from the last check (run this after the loop in item 3, so a saved insight exists)
