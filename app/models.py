@@ -150,12 +150,15 @@ class PlanRequest(BaseModel):
     learning_level_choice: str = "Mixed levels"
     learning_level_text: str = Field(default="", max_length=300)
     unit_goal: str = Field(default="", max_length=300)
+    current_situation: str = Field(default="", max_length=500)
+    classroom_vision: str = Field(default="", max_length=300)
     differentiated: bool = False
     differentiation_types: list[Literal["content", "process", "product"]] = []
     use_last_groups: bool = False
     day_number: int = Field(default=1, ge=1)
     total_days: int = Field(default=1, ge=1)
     project_idea: str = Field(default="", max_length=200)
+    project_scope: Literal["daily", "whole_project"] = "daily"
     teacher_note: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")

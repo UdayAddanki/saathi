@@ -72,18 +72,18 @@ def get_class(class_id: str, request: Request):
 @app.get('/api/classes/{class_id}/context')
 def get_context(class_id: str, request: Request):
     authorize(request)
-    return one('select * from class_contexts where class_id=?', (class_id,)) or {'class_id': class_id, 'learning_level_choice': 'Mixed levels', 'learning_level_text': '', 'unit_goal': ''}
+    return one('select * from class_contexts where class_id=?', (class_id,)) or {'class_id': class_id, 'learning_level_choice': 'Mixed levels', 'learning_level_text': '', 'current_situation': '', 'classroom_vision': '', 'unit_goal': ''}
 
 @app.put('/api/classes/{class_id}/context')
 def save_context(class_id: str, payload: dict, request: Request):
     authorize(request)
-    text = f"{payload.get('learning_level_text', '')} {payload.get('unit_goal', '')}"
+    text = ' '.join(str(payload.get(key, '')) for key in ('learning_level_text', 'current_situation', 'classroom_vision', 'unit_goal'))
     if INJECTION_PATTERNS.search(text):
         raise HTTPException(400, 'That classroom context contains text Saathi cannot treat as classroom context.')
-    if len(payload.get('learning_level_text', '')) > 300 or len(payload.get('unit_goal', '')) > 300:
+    if len(payload.get('learning_level_text', '')) > 300 or len(payload.get('current_situation', '')) > 500 or len(payload.get('classroom_vision', '')) > 300 or len(payload.get('unit_goal', '')) > 300:
         raise HTTPException(422, 'Classroom context fields are too long.')
     import datetime
-    database = conn(); database.execute('insert or replace into class_contexts values(?,?,?,?,?)', (class_id, payload.get('learning_level_choice', 'Mixed levels'), payload.get('learning_level_text', ''), payload.get('unit_goal', ''), datetime.datetime.now(datetime.timezone.utc).isoformat())); database.commit(); database.close()
+    database = conn(); database.execute('insert or replace into class_contexts(class_id,learning_level_choice,learning_level_text,unit_goal,updated_at,current_situation,classroom_vision) values(?,?,?,?,?,?,?)', (class_id, payload.get('learning_level_choice', 'Mixed levels'), payload.get('learning_level_text', ''), payload.get('unit_goal', ''), datetime.datetime.now(datetime.timezone.utc).isoformat(), payload.get('current_situation', ''), payload.get('classroom_vision', ''))); database.commit(); database.close()
     return get_context(class_id, request)
 
 @app.post('/api/classes/{class_id}/chapter-document')
@@ -118,9 +118,11 @@ def plan(req: PlanRequest, request: Request):
  check_injection(run_id, req.chapter_or_topic, req.teacher_note)
  enforce_rate_limit(request)
  context = get_context(req.class_id, request)
- if req.learning_level_text or req.unit_goal or req.learning_level_choice != 'Mixed levels':
-     context = save_context(req.class_id, {'learning_level_choice': req.learning_level_choice, 'learning_level_text': req.learning_level_text, 'unit_goal': req.unit_goal}, request)
- return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=req.day_number, total_days=req.total_days, project_idea=req.project_idea)
+ if req.learning_level_text or req.current_situation or req.classroom_vision or req.unit_goal or req.learning_level_choice != 'Mixed levels':
+     context = save_context(req.class_id, {'learning_level_choice': req.learning_level_choice, 'learning_level_text': req.learning_level_text, 'current_situation': req.current_situation, 'classroom_vision': req.classroom_vision, 'unit_goal': req.unit_goal}, request)
+ total_days = 1 if req.lesson_type == 'experiential' else req.total_days
+ day_number = 1 if req.lesson_type == 'experiential' else req.day_number
+ return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=day_number, total_days=total_days, project_idea=req.project_idea, project_scope=req.project_scope)
 @app.get('/api/plans/{plan_id}')
 def saved(plan_id: str, request: Request):
  authorize(request)
