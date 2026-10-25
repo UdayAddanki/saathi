@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
-from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL, ADMIN_CODE
+from .config import ACCESS_CODE, DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL, ADMIN_CODE
 from .db import init_db, rows, one, conn
 from typing import List
 from .models import PlanRequest, ClassRequest
@@ -180,7 +180,6 @@ def budget_remaining(teacher_id: str | None = None) -> bool:
     if total >= DAILY_BUDGET_USD: return False
     if teacher_id:
         personal = sum(item['cost_usd'] for item in rows("select cost_usd from llm_calls where teacher_id=? and created_at like ?", (teacher_id, today + '%')))
-        from .config import TEACHER_DAILY_BUDGET_USD
         return personal < TEACHER_DAILY_BUDGET_USD
     return True
 
