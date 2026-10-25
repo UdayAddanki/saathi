@@ -34,6 +34,12 @@ def get_class_profile(class_id: str) -> dict:
     started = time.perf_counter(); x=one('select * from classes where id=?',(class_id,));
     if not x: return None
     x['resources']=json.loads(x.pop('resources_json')); _log_tool('get_class_profile', {'class_id':class_id}, started); return x
+
+def get_class_context(class_id: str) -> dict:
+    """Return the saved classroom learning level and unit goal."""
+    from .db import one
+    context = one('select * from class_contexts where class_id=?', (class_id,))
+    return context or {'class_id': class_id, 'learning_level_choice': 'Mixed levels', 'learning_level_text': '', 'unit_goal': ''}
 def get_latest_insights(class_id: str) -> str:
     """Return Phase 2 insight placeholder."""
     from .db import rows

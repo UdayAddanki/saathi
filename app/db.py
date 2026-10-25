@@ -6,6 +6,7 @@ import uuid
 from .config import DB_PATH
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS classes(id TEXT PRIMARY KEY,name TEXT,board TEXT,grade INTEGER,section TEXT,class_size INTEGER,period_minutes INTEGER,resources_json TEXT);
+CREATE TABLE IF NOT EXISTS class_contexts(class_id TEXT PRIMARY KEY,learning_level_choice TEXT,learning_level_text TEXT,unit_goal TEXT,updated_at TEXT);
 CREATE TABLE IF NOT EXISTS students(class_id TEXT,roll_no INTEGER,first_name TEXT);
 CREATE TABLE IF NOT EXISTS lesson_plans(id TEXT PRIMARY KEY,class_id TEXT,board TEXT,grade INTEGER,subject TEXT,chapter_or_topic TEXT,mode TEXT,plan_json TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS checks(id TEXT PRIMARY KEY,lesson_plan_id TEXT,check_type TEXT,items_json TEXT);
@@ -27,6 +28,10 @@ def init_db() -> None:
         c.execute("ALTER TABLE responses ADD COLUMN check_mode TEXT DEFAULT 'each_child'")
     if "class_counts_json" not in response_columns:
         c.execute("ALTER TABLE responses ADD COLUMN class_counts_json TEXT")
+    plan_columns = {row[1] for row in c.execute("PRAGMA table_info(lesson_plans)")}
+    for name, definition in {"lesson_type": "TEXT DEFAULT '5-step'", "chapter": "TEXT DEFAULT ''", "topic": "TEXT DEFAULT ''", "day_number": "INTEGER DEFAULT 1", "total_days": "INTEGER DEFAULT 1", "context_snapshot_json": "TEXT DEFAULT '{}'", "differentiated": "INTEGER DEFAULT 0", "differentiation_types_json": "TEXT DEFAULT '[]'"}.items():
+        if name not in plan_columns:
+            c.execute(f"ALTER TABLE lesson_plans ADD COLUMN {name} {definition}")
     demos = json.load(open(DB_PATH.parent / "data/demo_classes.json"))
     for x in demos:
         if not c.execute('select 1 from classes where id=?',(x['id'],)).fetchone():

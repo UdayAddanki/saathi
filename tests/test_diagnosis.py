@@ -17,7 +17,7 @@ def make_check(check_type='mcq'):
         'option_errors': {'B': {'misconception_id': 'M-PV-02', 'description': 'digit value', 'ai_suggested': False}, 'C': {'misconception_id': 'M-PV-01', 'description': 'place', 'ai_suggested': False}, 'D': {'misconception_id': 'M-PV-01', 'description': 'whole', 'ai_suggested': False}},
     }]
     db = conn()
-    db.execute('insert into lesson_plans values(?,?,?,?,?,?,?,?,?)', (lesson_id, '3A-TS', 'TS_SCERT', 3, 'Mathematics', 'place value', 'curated', '{}', 'now'))
+    db.execute('insert into lesson_plans(id,class_id,board,grade,subject,chapter_or_topic,mode,plan_json,created_at) values(?,?,?,?,?,?,?,?,?)', (lesson_id, '3A-TS', 'TS_SCERT', 3, 'Mathematics', 'place value', 'curated', '{}', 'now'))
     db.execute('insert into checks values(?,?,?,?)', (check_id, lesson_id, check_type, json.dumps(items * 5)))
     db.commit()
     return db, check_id

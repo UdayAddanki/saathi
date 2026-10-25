@@ -45,8 +45,8 @@ function refreshChapters() {
   const board = state.boards.find((item) => item.id === current?.board);
   const grade = board?.grades.find((item) => item.grade === current?.grade);
   const subject = grade?.subjects.find((item) => item.name === $('subject-select').value);
-  $('chapter-select').replaceChildren(new Option('Type a chapter or topic', ''));
-  (subject?.chapters || []).forEach((chapter) => $('chapter-select').add(new Option(chapter.title, chapter.title)));
+  $('chapter-list').replaceChildren();
+  (subject?.chapters || []).forEach((chapter) => $('chapter-list').appendChild(new Option(chapter.title, chapter.title)));
 }
 
 function renderClasses() {
@@ -108,6 +108,19 @@ function renderResult(result) {
   addText(badges, 'span', result.mode === 'curated' ? 'Curated' : 'Open', 'badge');
   addText(badges, 'span', result.review.passed ? 'Checked ✓' : 'Issues found', 'badge');
   if (result.revised) addText(badges, 'span', 'Revised once', 'badge accent');
+  if (result.plan.vision && result.plan.method) {
+    const vision = addText(card, 'section', '', 'vision-card');
+    addText(vision, 'h2', 'Lesson Vision');
+    addText(vision, 'h3', 'Objective'); addText(vision, 'p', result.plan.vision.objective, 'objective');
+    addText(vision, 'h3', 'Why this objective'); addText(vision, 'p', result.plan.vision.why_this_objective);
+    addText(vision, 'h3', 'Assessment'); addText(vision, 'p', result.plan.vision.assessment);
+    addText(vision, 'h3', 'Expected student response'); addText(vision, 'p', JSON.stringify(result.plan.vision.expected_student_response));
+    const words = addText(vision, 'div', '', 'keyword-chips'); result.plan.vision.key_words.forEach((word) => addText(words, 'span', word.word, 'badge'));
+    addText(card, 'h2', 'Lesson Method'); addText(card, 'p', `Lesson model: ${result.plan.lesson_type}`);
+    result.plan.method.forEach((step) => { const section = addText(card, 'details', '', 'section-card'); const summary = addText(section, 'summary', `${step.name} · ${step.minutes} minutes`); addText(section, 'p', step.purpose); addText(section, 'p', `Materials: ${step.materials.join(', ')}`); const table = addText(section, 'div', '', 'exchange-table'); step.exchanges.forEach((exchange) => { addText(table, 'div', `Teacher: ${exchange.teacher}`, 'teacher-line'); addText(table, 'div', `Students: ${exchange.students}`, 'student-line'); }); });
+    if (result.plan.project_outline) { addText(card, 'h3', 'Project outline'); result.plan.project_outline.days.forEach((day, index) => addText(card, 'p', `${index + 1}${index + 1 === result.plan.project_outline.today_day ? ' · Today' : ''}: ${day}`)); }
+    renderCheck(card, result); card.appendChild(renderUsageStrip(result)); return;
+  }
   addText(card, 'h2', result.plan.title);
   addText(card, 'h3', 'Learning objectives');
   result.plan.learning_objectives.forEach((item) => addText(card, 'p', item));
@@ -274,12 +287,26 @@ async function load() {
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
   state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
+  await loadContext();
 }
 
-$('class-select').addEventListener('change', refreshSubjects); $('subject-select').addEventListener('change', refreshChapters);
+async function loadContext() {
+  const current = selectedClass();
+  if (!current) return;
+  const context = await getJson(`/api/classes/${current.id}/context`);
+  $('level-choice').value = context.learning_level_choice || 'Mixed levels';
+  $('level-text').value = context.learning_level_text || '';
+  $('unit-goal').value = context.unit_goal || '';
+}
+
+$('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); }); $('subject-select').addEventListener('change', refreshChapters);
 $('topic-input').addEventListener('input', (event) => $('topic-count').textContent = `${event.target.value.length} / 120`);
 $('note-input').addEventListener('input', (event) => $('note-count').textContent = `${event.target.value.length} / 500`);
-$('plan-form').addEventListener('submit', async (event) => { event.preventDefault(); $('prepare-button').disabled = true; $('progress').classList.remove('hidden'); try { const result = await getJson('/api/plans', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({class_id: $('class-select').value, subject: $('subject-select').value, chapter_or_topic: $('topic-input').value, teacher_note: $('note-input').value}) }); if (result.error) renderError(result.error); else renderResult(result); } catch (error) { renderError(error.message); } finally { $('prepare-button').disabled = false; $('progress').classList.add('hidden'); } });
+$('level-text').addEventListener('input', (event) => $('level-count').textContent = `${event.target.value.length} / 300`);
+$('unit-goal').addEventListener('input', (event) => $('goal-count').textContent = `${event.target.value.length} / 300`);
+document.querySelectorAll('.lesson-type').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.lesson-type').forEach((item) => item.classList.remove('selected')); button.classList.add('selected'); $('project-fields').classList.toggle('hidden', !['project-based', 'experiential'].includes(button.dataset.lesson)); }));
+$('differentiated').addEventListener('change', (event) => $('differentiation-fields').classList.toggle('hidden', !event.target.checked));
+$('plan-form').addEventListener('submit', async (event) => { event.preventDefault(); $('prepare-button').disabled = true; $('progress').classList.remove('hidden'); try { const lessonType = document.querySelector('.lesson-type.selected').dataset.lesson; const result = await getJson('/api/plans', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({class_id: $('class-select').value, subject: $('subject-select').value, chapter: $('chapter-input').value, topic: $('topic-input').value, lesson_type: lessonType, learning_level_choice: $('level-choice').value, learning_level_text: $('level-text').value, unit_goal: $('unit-goal').value, differentiated: $('differentiated').checked, differentiation_types: [...document.querySelectorAll('.diff-type:checked')].map((item) => item.value), use_last_groups: $('use-last-groups').checked, day_number: Number($('day-number').value), total_days: Number($('total-days').value), project_idea: $('project-idea').value, teacher_note: $('note-input').value}) }); if (result.error) renderError(result.error); else renderResult(result); } catch (error) { renderError(error.message); } finally { $('prepare-button').disabled = false; $('progress').classList.add('hidden'); } });
 $('add-class-button').onclick = () => $('class-dialog').showModal(); $('close-dialog').onclick = () => $('class-dialog').close();
 $('class-form').addEventListener('submit', async (event) => { event.preventDefault(); const resources = [...document.querySelectorAll('#class-form input[type=checkbox]:checked')].map((item) => item.value); const created = await getJson('/api/classes', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({board:$('new-board').value, grade:Number($('new-grade').value), section:$('new-section').value, class_size:Number($('new-size').value), period_minutes:Number($('new-period').value), resources})}); state.classes = await getJson('/api/classes'); renderClasses(); $('class-select').value = created.id; refreshSubjects(); $('class-dialog').close(); });
 document.querySelectorAll('.tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((view) => view.classList.add('hidden')); $(button.dataset.view).classList.remove('hidden'); if (button.dataset.view === 'usage-view') loadUsage(); }));

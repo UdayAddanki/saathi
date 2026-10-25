@@ -11,7 +11,13 @@ from app.pipeline import _coach_number_issue, _curated_issues
 
 
 def test_testmodel_agent_can_complete_without_real_api():
-    with planner.override(model=TestModel()):
+    output = {
+        'title': 'A lesson', 'learning_objectives': ['Learn'], 'materials': ['bottle caps'],
+        'sections': [{'name': 'Opening', 'minutes': 40, 'teacher_actions': ['Ask'], 'student_actions': ['Answer']}],
+        'local_examples': [], 'differentiation_tips': {'support': 'Help', 'on_level': 'Try', 'challenge': 'Extend'},
+        'large_class_tips': ['Use groups'], 'homework_or_home_activity': 'Count at home',
+    }
+    with planner.override(model=TestModel(custom_output_args=output)):
         result = planner.run_sync('class_id=3A-TS board=TS_SCERT grade=3 subject=Mathematics period_minutes=40 topic=place value')
     assert result.output.title
 
