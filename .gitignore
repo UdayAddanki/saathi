@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 saathi.db
 .pytest_cache/
+uploads/

@@ -7,7 +7,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.staticfiles import StaticFiles
 from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND
 from .db import init_db, rows, one, conn
@@ -85,6 +85,25 @@ def save_context(class_id: str, payload: dict, request: Request):
     import datetime
     database = conn(); database.execute('insert or replace into class_contexts values(?,?,?,?,?)', (class_id, payload.get('learning_level_choice', 'Mixed levels'), payload.get('learning_level_text', ''), payload.get('unit_goal', ''), datetime.datetime.now(datetime.timezone.utc).isoformat())); database.commit(); database.close()
     return get_context(class_id, request)
+
+@app.post('/api/classes/{class_id}/chapter-document')
+async def upload_chapter_document(class_id: str, request: Request, file: UploadFile = File(...)):
+    """Store an optional PDF locally for the current class; never expose its contents in HTML."""
+    authorize(request)
+    if not one('select id from classes where id=?', (class_id,)):
+        raise HTTPException(404, 'Class not found')
+    filename = file.filename or 'chapter.pdf'
+    if not filename.lower().endswith('.pdf'):
+        raise HTTPException(400, 'Only PDF chapter documents are supported.')
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024 or not content.startswith(b'%PDF'):
+        raise HTTPException(400, 'Please choose a valid PDF smaller than 10 MB.')
+    import uuid
+    upload_dir = ROOT / 'uploads'
+    upload_dir.mkdir(exist_ok=True)
+    stored = upload_dir / f'{class_id}-{uuid.uuid4().hex}.pdf'
+    stored.write_bytes(content)
+    return {'filename': filename, 'stored': stored.name}
 @app.post('/api/classes')
 def create_class(req: ClassRequest, request: Request):
  authorize(request)
