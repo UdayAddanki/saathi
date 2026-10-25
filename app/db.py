@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS checks(id TEXT PRIMARY KEY,lesson_plan_id TEXT,check_
 CREATE TABLE IF NOT EXISTS responses(check_id TEXT,roll_no INTEGER,item_index INTEGER,chosen_option TEXT,rating TEXT,error_id TEXT);
 CREATE TABLE IF NOT EXISTS insights(check_id TEXT,insight_json TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS review_results(id TEXT PRIMARY KEY,run_id TEXT,passed INTEGER,issues_json TEXT,revision INTEGER,created_at TEXT);
-CREATE TABLE IF NOT EXISTS llm_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name TEXT,input_tokens INTEGER,cached_input_tokens INTEGER,output_tokens INTEGER,cost_usd REAL,provider_cost_usd REAL,duration_ms INTEGER,created_at TEXT);
+CREATE TABLE IF NOT EXISTS llm_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name TEXT,input_tokens INTEGER,cached_input_tokens INTEGER,output_tokens INTEGER,cost_usd REAL,provider_cost_usd REAL,duration_ms INTEGER,created_at TEXT,teacher_id TEXT);
 CREATE TABLE IF NOT EXISTS tool_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name TEXT,tool_name TEXT,arguments_json TEXT,duration_ms INTEGER,created_at TEXT);
-CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,kind TEXT,class_id TEXT,status TEXT,total_cost_usd REAL,created_at TEXT);
+CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,kind TEXT,class_id TEXT,status TEXT,total_cost_usd REAL,created_at TEXT,teacher_id TEXT);
 CREATE TABLE IF NOT EXISTS pending_warmups(class_id TEXT PRIMARY KEY,warmup TEXT,source_check_id TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS teachers(id TEXT PRIMARY KEY,username TEXT UNIQUE COLLATE NOCASE,email TEXT UNIQUE COLLATE NOCASE,password_hash TEXT,password_salt TEXT,created_at TEXT,last_active TEXT,force_password_change INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,teacher_id TEXT,token_hash TEXT UNIQUE,expires_at TEXT,created_at TEXT);
@@ -75,11 +75,11 @@ def rows(sql: str, args: tuple = ()) -> list[dict]:
     c=conn(); out=[dict(r) for r in c.execute(sql,args)]; c.close(); return out
 def one(sql: str, args: tuple = ()) -> dict | None:
     a=rows(sql,args); return a[0] if a else None
-def add_run(class_id: str, kind: str = "plan") -> str:
+def add_run(class_id: str, kind: str = "plan", teacher_id: str | None = None) -> str:
     import datetime
     run_id = str(uuid.uuid4())
     c = conn()
-    c.execute("INSERT INTO runs VALUES(?,?,?,?,?,?)", (run_id, kind, class_id, "running", 0, datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    c.execute("INSERT INTO runs(id,kind,class_id,status,total_cost_usd,created_at,teacher_id) VALUES(?,?,?,?,?,?,?)", (run_id, kind, class_id, "running", 0, datetime.datetime.now(datetime.timezone.utc).isoformat(), teacher_id))
     c.commit()
     c.close()
     return run_id

@@ -262,7 +262,8 @@ def plan(req: PlanRequest, request: Request):
      context = save_context(req.class_id, {'learning_level_choice': req.learning_level_choice, 'learning_level_text': req.learning_level_text, 'current_situation': req.current_situation, 'classroom_vision': req.classroom_vision, 'unit_goal': req.unit_goal}, request)
  total_days = 1 if req.lesson_type == 'experiential' else req.total_days
  day_number = 1 if req.lesson_type == 'experiential' else req.day_number
- return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=day_number, total_days=total_days, project_idea=req.project_idea, project_scope=req.project_scope)
+ teacher = require_teacher(request)
+ return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, teacher_id=teacher['id'], chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=day_number, total_days=total_days, project_idea=req.project_idea, project_scope=req.project_scope)
 @app.get('/api/plans/{plan_id}')
 def saved(plan_id: str, request: Request):
  return owned_plan(request, plan_id)
