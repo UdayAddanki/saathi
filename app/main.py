@@ -454,23 +454,26 @@ async def read_submissions(paper_id: str, request: Request):
     paper = owned_paper(request, paper_id)
     if not paper: raise HTTPException(404, 'Paper not found')
     questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []
-    sheets = rows('select * from sheet_files where paper_id=? and roll_no is not null', (paper_id,))
-    total_sheets = one('select count(*) as count from sheet_files where paper_id=?', (paper_id,))['count']
+    sheets = rows('select * from sheet_files where paper_id=?', (paper_id,))
     if not sheets:
-        raise HTTPException(422, f'Assign a roll number to each of the {total_sheets} uploaded answer sheets before reading them.')
+        raise HTTPException(422, 'Upload at least one answer sheet before reading results.')
     for index, sheet in enumerate(sheets):
         if not budget_remaining(teacher['id']):
             return {'paper_id': paper_id, 'readings': readings, 'message': f'Daily limit reached. {index} of {len(sheets)} sheets read; the rest can be read tomorrow.'}
         started = time.perf_counter()
-        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), f'This sheet is assigned to roll number {sheet["roll_no"]}. Transcribe every question option and return that roll number in the structured output.'])
+        assignment = f'This sheet is assigned to roll number {sheet["roll_no"]}.' if sheet['roll_no'] else 'Read the positive integer in the roll-number box at the top of the sheet.'
+        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), f'{assignment} Transcribe every question option and return the roll number in the structured output.'])
         usage = record(run_id, 'answer_sheet_reader', result.usage, started, teacher['id'])
-        db = conn(); db.execute('delete from sheet_readings where paper_id=? and roll_no=?', (paper_id, sheet['roll_no']))
+        roll_no = int(result.output.roll_no)
+        if roll_no <= 0:
+            raise HTTPException(422, 'A positive roll number was not readable. Assign this sheet manually.')
+        db = conn(); db.execute('update sheet_files set roll_no=? where id=?', (roll_no, sheet['id'])); db.execute('delete from sheet_readings where paper_id=? and roll_no=?', (paper_id, roll_no))
         for number, answer in result.output.answers.items():
             clean_number = int(str(number).lstrip('Qq'))
             confidence = result.output.confidence.get(number, result.output.confidence.get(str(clean_number), 'low'))
             unreadable_numbers = {int(str(value).lstrip('Qq')) for value in result.output.unreadable}
-            db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, sheet['roll_no'], clean_number, answer, confidence, int(clean_number in unreadable_numbers), None))
-        db.commit(); db.close(); readings.append({'roll_no': sheet['roll_no'], 'usage': usage})
+            db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, roll_no, clean_number, answer, confidence, int(clean_number in unreadable_numbers), None))
+        db.commit(); db.close(); readings.append({'roll_no': roll_no, 'usage': usage})
     db = conn(); db.execute('update runs set status=? where id=?', ('complete', run_id)); db.commit(); db.close()
     return {'paper_id': paper_id, 'readings': readings}
 
