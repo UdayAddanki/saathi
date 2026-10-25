@@ -291,6 +291,7 @@ function collectClassCounts() {
 }
 
 async function load() {
+  if (location.pathname === '/reset') { $('app-main').classList.add('hidden'); document.querySelector('.topbar').classList.add('hidden'); $('auth-screen').classList.add('hidden'); $('reset-screen').classList.remove('hidden'); return; }
   const health = await getJson('/api/health');
   state.demoMode = health.demo_mode;
   if (health.demo_mode) $('demo-login').classList.remove('hidden');
@@ -316,6 +317,7 @@ $('account-button').onclick = () => $('account-dialog').showModal();
 $('save-profile').onclick = async () => { const r = await fetch('/api/auth/profile', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:$('account-name').value,school:$('account-school').value})}); $('account-message').textContent = r.ok ? 'Profile saved.' : 'Could not save profile.'; };
 $('change-password').onclick = async () => { const r = await fetch('/api/auth/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('current-password').value,new_password:$('new-password').value})}); $('account-message').textContent = r.ok ? 'Password changed.' : ((await r.json()).detail || 'Could not change password.'); };
 $('logout-button').onclick = async () => { await fetch('/api/auth/logout',{method:'POST'}); location.reload(); };
+$('reset-form').onsubmit = async (event) => { event.preventDefault(); const token = new URLSearchParams(location.search).get('token') || ''; if ($('reset-password').value !== $('reset-confirm').value) { $('reset-message').textContent = 'Passwords do not match.'; return; } const response = await fetch('/api/auth/reset-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token,new_password:$('reset-password').value})}); if (!response.ok) { $('reset-message').textContent = response.status === 400 ? 'This link has expired. Request a new one.' : 'Could not reset the password.'; return; } $('reset-message').textContent = 'Password reset. You can now log in.'; };
 function showAuth(form) { $('login-form').classList.toggle('hidden', form !== 'login'); $('signup-form').classList.toggle('hidden', form !== 'signup'); }
 $('show-login').onclick = () => showAuth('login'); $('show-signup').onclick = () => showAuth('signup');
 $('demo-login').onclick = async () => { await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'demo',password:'saathi-demo'})}); location.reload(); };

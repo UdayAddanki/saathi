@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
-from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL
+from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL, ADMIN_CODE
 from .db import init_db, rows, one, conn
 from typing import List
 from .models import PlanRequest, ClassRequest
@@ -164,20 +164,25 @@ def reset_password(payload: dict):
     hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=? where id=?', (hashed, salt, reset['teacher_id'])); db.execute('update password_resets set used=1 where id=?', (reset['id'],)); db.execute('delete from sessions where teacher_id=?', (reset['teacher_id'],)); db.commit(); db.close(); return {'ok': True}
 
 def enforce_rate_limit(request):
-    key = request.headers.get('X-Saathi-Access-Code') or (request.client.host if request.client else 'unknown')
+    teacher = require_teacher(request); key = f"teacher:{teacher['id']}"
     now = time.time()
     REQUESTS[key] = [stamp for stamp in REQUESTS.get(key, []) if now - stamp < 3600]
     if len(REQUESTS[key]) >= 10:
-        raise HTTPException(429, 'This access code has reached the limit of 10 lesson runs per hour.')
+        raise HTTPException(429, 'You have reached the limit of 10 lesson runs per hour.')
     REQUESTS[key].append(now)
 
 def guard_request(request):
     authorize(request)
 
-def budget_remaining() -> bool:
+def budget_remaining(teacher_id: str | None = None) -> bool:
     today = datetime.date.today().isoformat()
     total = sum(item['cost_usd'] for item in rows("select cost_usd from llm_calls where created_at like ?", (today + '%',)))
-    return total < DAILY_BUDGET_USD
+    if total >= DAILY_BUDGET_USD: return False
+    if teacher_id:
+        personal = sum(item['cost_usd'] for item in rows("select cost_usd from llm_calls where teacher_id=? and created_at like ?", (teacher_id, today + '%')))
+        from .config import TEACHER_DAILY_BUDGET_USD
+        return personal < TEACHER_DAILY_BUDGET_USD
+    return True
 
 def check_injection(run_id: str, topic: str, note: str | None) -> None:
     if INJECTION_PATTERNS.search(f'{topic}\n{note or ""}'):
@@ -295,7 +300,8 @@ def plan(req: PlanRequest, request: Request):
  authorize(request)
  owned_class(request, req.class_id) if one('select id from teachers limit 1') else None
  if not KEY_FOUND: raise HTTPException(503,'PORTKEY_API_KEY not found')
- if not budget_remaining(): raise HTTPException(429, 'Today’s lesson budget has been reached. Please try again tomorrow.')
+ teacher = require_teacher(request)
+ if not budget_remaining(teacher['id']): raise HTTPException(429, "You've used today's limit. It resets at midnight.")
  run_id = 'preflight-' + str(time.time_ns())
  check_injection(run_id, req.chapter_or_topic, req.teacher_note)
  enforce_rate_limit(request)
@@ -304,7 +310,6 @@ def plan(req: PlanRequest, request: Request):
      context = save_context(req.class_id, {'learning_level_choice': req.learning_level_choice, 'learning_level_text': req.learning_level_text, 'current_situation': req.current_situation, 'classroom_vision': req.classroom_vision, 'unit_goal': req.unit_goal}, request)
  total_days = 1 if req.lesson_type == 'experiential' else req.total_days
  day_number = 1 if req.lesson_type == 'experiential' else req.day_number
- teacher = require_teacher(request)
  return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, teacher_id=teacher['id'], chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=day_number, total_days=total_days, project_idea=req.project_idea, project_scope=req.project_scope)
 @app.get('/api/plans/{plan_id}')
 def saved(plan_id: str, request: Request):
@@ -561,4 +566,15 @@ def usage(request: Request):
         'per_agent': rows('select agent_name, sum(input_tokens) as input_tokens, sum(cached_input_tokens) as cached_input_tokens, sum(output_tokens) as output_tokens, sum(cost_usd) as cost_usd, sum(provider_cost_usd) as provider_cost_usd from llm_calls where teacher_id=? group by agent_name', (teacher['id'],)),
         'recent_runs': runs,
     }
+
+@app.get('/admin/pilot')
+def admin_pilot(request: Request):
+    if not ADMIN_CODE or request.headers.get('X-Admin-Code') != ADMIN_CODE: raise HTTPException(401, 'Admin access required.')
+    teachers = rows('select id,username,email,created_at,last_active from teachers order by created_at')
+    for teacher in teachers:
+        teacher['classes'] = one('select count(*) as count from classes where teacher_id=?', (teacher['id'],))['count']
+        teacher['lessons'] = one('select count(*) as count from runs where teacher_id=? and kind="plan"', (teacher['id'],))['count']
+        teacher['sheets_uploaded'] = one('select count(*) as count from sheet_files where teacher_id=?', (teacher['id'],))['count']
+        teacher['cost_total'] = one('select coalesce(sum(cost_usd),0) as total from llm_calls where teacher_id=?', (teacher['id'],))['total']
+    return {'teachers': teachers}
 app.mount('/', StaticFiles(directory=str(ROOT / "static"), html=True), name='static')
