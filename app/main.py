@@ -12,6 +12,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
 from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD
 from .db import init_db, rows, one, conn
+from typing import List
 from .models import PlanRequest, ClassRequest
 from .pipeline import generate_plan, generate_next_steps
 from .config import ROOT
@@ -21,6 +22,10 @@ from .roll import parse_roll_file, normalize_level
 from .roll_pdf import parse_roll_pdf
 from .marking import mark_answer
 from .auth import password_hash, password_matches, token_hash, new_session
+from .agents.readers import answer_sheet_reader
+from pydantic_ai import BinaryContent
+from .usage import record
+from .agents.resources import resource_builder
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -327,6 +332,75 @@ def paper_from_check(check_id: str, request: Request):
     db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,?)', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1, __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())); db.commit(); db.close()
     return {'id': paper_id, 'questions': items, 'confirmed': True}
 
+@app.post('/api/checks/{check_id}/submissions')
+async def upload_submissions(check_id: str, request: Request, files: List[UploadFile] = File(...)):
+    check = owned_check(request, check_id)
+    teacher = require_teacher(request)
+    paper = one('select id from papers where class_id=? and source=? order by created_at desc limit 1', (check['class_id'], 'saathi_check'))
+    if not paper:
+        items = json.loads(check['items_json']); items = items if isinstance(items, list) else items.get('questions', items.get('tasks', []))
+        paper_id = uuid.uuid4().hex; db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,datetime("now"))', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1)); db.commit(); db.close()
+    else: paper_id = paper['id']
+    db = conn(); db.execute('insert or replace into paper_checks values(?,?)', (paper_id, check_id)); db.commit(); db.close()
+    students = {int(row['roll_no']): row for row in rows('select roll_no,first_name,readiness_level from students where class_id=?', (check['class_id'],))}
+    directory = ROOT / 'uploads' / teacher['id']; directory.mkdir(parents=True, exist_ok=True); output = []
+    for file in files:
+        suffix = (file.filename or '').lower().rsplit('.', 1)[-1]
+        if suffix in {'doc', 'docx', 'ppt', 'pptx'}: raise HTTPException(415, 'Please save Word or PowerPoint files as PDF and upload again.')
+        if suffix not in {'pdf', 'jpg', 'jpeg', 'png', 'heic'}: raise HTTPException(415, 'Upload a PDF, JPG, PNG, or HEIC answer sheet.')
+        data = await file.read(10 * 1024 * 1024 + 1)
+        if len(data) > 10 * 1024 * 1024: raise HTTPException(413, 'Each answer sheet must be 10 MB or smaller.')
+        match = re.search(r'(?:roll[_ -]?)?(\d+)', file.filename or '', re.I); roll_no = int(match.group(1)) if match else None
+        stored = directory / f'{uuid.uuid4().hex}.{suffix}'; stored.write_bytes(data)
+        db = conn(); file_id = uuid.uuid4().hex; db.execute('insert into sheet_files(id,paper_id,roll_no,page_number,mime_type,path,size,teacher_id) values(?,?,?,?,?,?,?,?)', (file_id, paper_id, roll_no if roll_no in students else None, 1, suffix, str(stored), len(data), teacher['id'])); db.commit(); db.close()
+        output.append({'file_id': file_id, 'filename': file.filename, 'roll_no': roll_no if roll_no in students else None, 'child': students.get(roll_no), 'status': 'Uploaded' if roll_no in students else 'Needs teacher assignment'})
+    return {'paper_id': paper_id, 'files': output}
+
+@app.get('/api/papers/{paper_id}/submission-review')
+def submission_review(paper_id: str, request: Request):
+    owned_paper(request, paper_id); paper = one('select id from papers where id=?', (paper_id,))
+    if not paper: raise HTTPException(404, 'Paper not found')
+    return {'paper_id': paper_id, 'files': rows('select id,roll_no,page_number,mime_type,path,size from sheet_files where paper_id=?', (paper_id,)), 'confirmed': False}
+
+@app.post('/api/papers/{paper_id}/assign-submission')
+def assign_submission(paper_id: str, payload: dict, request: Request):
+    owned_paper(request, paper_id); roll_no = int(payload.get('roll_no', 0)); file_id = payload.get('file_id')
+    if roll_no <= 0 or not one('select id from sheet_files where id=? and paper_id=?', (file_id, paper_id)): raise HTTPException(422, 'Choose a valid child for this file.')
+    db = conn(); db.execute('update sheet_files set roll_no=? where id=? and paper_id=?', (roll_no, file_id, paper_id)); db.commit(); db.close(); return {'assigned': True}
+
+@app.post('/api/papers/{paper_id}/read-submissions')
+async def read_submissions(paper_id: str, request: Request):
+    paper = owned_paper(request, paper_id)
+    if not paper: raise HTTPException(404, 'Paper not found')
+    questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []
+    for sheet in rows('select * from sheet_files where paper_id=? and roll_no is not null', (paper_id,)):
+        started = time.perf_counter()
+        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), 'Transcribe every question option.'])
+        usage = record(run_id, 'answer_sheet_reader', result.usage, started, teacher['id'])
+        db = conn(); db.execute('delete from sheet_readings where paper_id=? and roll_no=?', (paper_id, sheet['roll_no']))
+        for number, answer in result.output.answers.items():
+            clean_number = int(str(number).lstrip('Qq'))
+            confidence = result.output.confidence.get(number, result.output.confidence.get(str(clean_number), 'low'))
+            unreadable_numbers = {int(str(value).lstrip('Qq')) for value in result.output.unreadable}
+            db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, sheet['roll_no'], clean_number, answer, confidence, int(clean_number in unreadable_numbers), None))
+        db.commit(); db.close(); readings.append({'roll_no': sheet['roll_no'], 'usage': usage})
+    db = conn(); db.execute('update runs set status=? where id=?', ('complete', run_id)); db.commit(); db.close()
+    return {'paper_id': paper_id, 'readings': readings}
+
+@app.get('/api/papers/{paper_id}/review-grid')
+def review_grid(paper_id: str, request: Request):
+    owned_paper(request, paper_id); paper = one('select * from papers where id=?', (paper_id,))
+    if not paper: raise HTTPException(404, 'Paper not found')
+    questions = json.loads(paper['questions_json']); output = []
+    for reading in rows('select * from sheet_readings where paper_id=? order by roll_no,question_number', (paper_id,)):
+        question_number = int(reading['question_number'])
+        if question_number > len(questions):
+            continue
+        question = questions[question_number - 1]; answer = reading['transcribed_answer']; answer_option = str(answer or '').strip().upper()[:1]; correct = question.get('correct_option')
+        if not correct: correct = question.get('correct_answer')
+        output.append({'roll_no': reading['roll_no'], 'question_number': question_number, 'answer': answer_option, 'raw_answer': answer, 'confidence': reading['confidence'], 'unreadable': bool(reading['unreadable']), 'mark': None if reading['unreadable'] or not answer else (1 if answer_option == str(correct).upper() else 0)})
+    return {'paper_id': paper_id, 'questions': questions, 'cells': output}
+
 @app.post('/api/papers/{paper_id}/confirm')
 def confirm_paper(paper_id: str, payload: dict, request: Request):
     owned_paper(request, paper_id)
@@ -338,7 +412,14 @@ def confirm_results(paper_id: str, payload: list[dict], request: Request):
     db = conn(); db.execute('delete from results where paper_id=?', (paper_id,))
     for item in payload:
         db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, item['roll_no'], item['question_number'], item.get('mark'), item.get('max_marks', 1), 1, int(item.get('edited', False))))
-    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload)}
+    corrections = sum(1 for item in payload if item.get('edited'))
+    db.execute('insert or replace into check_corrections(paper_id,count) values(?,?)', (paper_id, corrections))
+    mapping = db.execute('select check_id from paper_checks where paper_id=?', (paper_id,)).fetchone()
+    if mapping:
+        db.execute('delete from responses where check_id=?', (mapping[0],))
+        for item in payload:
+            db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,check_mode) values(?,?,?,?,?)', (mapping[0], item['roll_no'], int(item['question_number']) - 1, item.get('answer'), 'each_child'))
+    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload), 'corrections': corrections}
 
 @app.get('/api/papers/{paper_id}/progress')
 def paper_progress(paper_id: str, request: Request):
@@ -375,7 +456,21 @@ def insight(check_id: str, request: Request):
 @app.post('/api/checks/{check_id}/next-steps')
 def next_steps(check_id: str, request: Request):
     owned_check(request, check_id)
-    return generate_next_steps(check_id)
+    return generate_next_steps(check_id, require_teacher(request)['id'])
+
+@app.post('/api/checks/{check_id}/resources/{kind}')
+async def generate_resources(check_id: str, kind: str, request: Request):
+    check = owned_check(request, check_id)
+    teacher = require_teacher(request)
+    if kind not in {'worksheets', 'meeting_plans'}: raise HTTPException(422, 'Unknown resource type.')
+    insight = analyze_results(check_id); rolls = []
+    if kind == 'meeting_plans':
+        students = rows('select roll_no from students where class_id=?', (check['class_id'],))
+        rolls = [item['roll_no'] for item in students[:5]]
+    run_id = add_run(check['class_id'], kind, teacher['id']); prompt = f'kind={kind}; check_id={check_id}; insight={insight.model_dump_json()}; roll_numbers={rolls}. Return resources only.'
+    started = time.perf_counter(); result = await resource_builder.run(prompt); usage = record(run_id, 'resource_builder', result.usage, started, teacher['id'])
+    content = result.output.model_dump(); db = conn(); db.execute('delete from resources where check_id=? and kind=?', (check_id, kind)); db.execute('insert into resources values(?,?,?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, check_id, kind, None, None, json.dumps(content), '{}',)); db.execute('update runs set status=?,total_cost_usd=? where id=?', ('complete', usage['cost_usd'], run_id)); db.commit(); db.close()
+    return {'check_id': check_id, 'kind': kind, 'resources': content, 'usage': usage, 'roll_numbers': rolls}
 
 @app.post('/api/checks/{check_id}/use-warmup')
 def use_warmup(check_id: str, request: Request):

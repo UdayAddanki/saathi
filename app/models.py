@@ -136,6 +136,19 @@ class ObservationCheck(BaseModel):
     def count(self):
         if not 3 <= len(self.tasks) <= 5: raise ValueError("three to five tasks required")
         return self
+class ReadAloudQuestion(BaseModel):
+    concept_id: str | None = None; stem: str; teacher_script: str; options: dict[str, str]; correct_option: Literal["A", "B", "C"]; option_errors: dict[str, ErrorTag]
+    @model_validator(mode="after")
+    def valid(self):
+        if set(self.options) != {"A", "B", "C"}: raise ValueError("Grades 1–2 checks need exactly three A-C options")
+        if set(self.option_errors) != set(self.options) - {self.correct_option}: raise ValueError("every wrong option needs an error")
+        return self
+class ReadAloudCheck(BaseModel):
+    questions: list[ReadAloudQuestion]
+    @model_validator(mode="after")
+    def count(self):
+        if len(self.questions) != 5: raise ValueError("exactly five questions required")
+        return self
 class ReviewIssue(BaseModel):
     target: str; problem: str; fix: str
     severity: Literal["must_fix", "suggestion"]
@@ -187,6 +200,21 @@ class NextSteps(BaseModel):
     practice_sheet: list[dict]
     missed_lesson_catchup: str
     next_lesson_warmup: str
+
+class ResourceItem(BaseModel):
+    title: str
+    level: str = ''
+    items: list[str] = []
+    answers: list[str] = []
+    parent_guidance: str = ''
+    strengths: list[str] = []
+    hard_now: str = ''
+    home_activities: list[str] = []
+    opening_script: str = ''
+
+class ResourceSet(BaseModel):
+    kind: str
+    resources: list[ResourceItem]
 
 class ResultsRequest(BaseModel):
     check_mode: Literal["each_child", "class_count"]

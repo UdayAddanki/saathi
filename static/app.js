@@ -1,6 +1,7 @@
 const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false, rollPreviewRows: null };
 state.check = null;
 const $ = (id) => document.getElementById(id);
+const isMcqCheck = (check) => check.check_type === 'mcq' || check.check_type === 'mcq_read_aloud';
 
 function addText(parent, tag, text, className = '') {
   const element = document.createElement(tag);
@@ -9,6 +10,13 @@ function addText(parent, tag, text, className = '') {
   parent.appendChild(element);
   return element;
 }
+function classroomGreeting() {
+  const now = new Date(); const hour = now.getHours(); const time = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const note = ['Small steps every day add up.', 'Every child can grow.', 'Your careful noticing makes a difference.'][now.getDate() % 3];
+  const greeting = document.createElement('p'); greeting.className = 'classroom-greeting'; greeting.textContent = `${time}! ☀️ ${note}`; document.querySelector('.topbar')?.append(greeting);
+}
+function celebrate(message = 'Ready! ⭐') { const burst = document.createElement('div'); burst.className = 'star-burst'; burst.setAttribute('aria-live', 'polite'); burst.textContent = `✦  ${message}  ✦`; document.body.append(burst); setTimeout(() => burst.remove(), 1200); }
+classroomGreeting();
 
 async function getJson(url, options) {
   options = options || {};
@@ -78,7 +86,7 @@ function renderUsageStrip(result) {
 }
 
 function renderCheck(parent, result) {
-  addText(parent, 'h3', result.check_type === 'mcq' ? 'Exit check' : 'Observation check');
+  addText(parent, 'h3', isMcqCheck(result.check) ? 'Answer check' : 'Saved observation check (read-only)');
   const toggle = document.createElement('button');
   toggle.className = 'secondary';
   toggle.textContent = 'Show common errors';
@@ -178,11 +186,15 @@ async function loadCheck(checkId) {
   state.check = await getJson(`/api/checks/${checkId}`);
   const editor = $('check-editor'); editor.replaceChildren();
   const items = state.check.items.questions || state.check.items.tasks || [];
+  if (isMcqCheck(state.check)) {
+    const print = addText(editor, 'button', 'Print answer sheet', 'secondary');
+    print.onclick = () => { const popup = window.open('', 'saathi-answer-sheet'); if (!popup) return; popup.document.write('<!doctype html><title>Saathi answer sheet</title><style>body{font:20px sans-serif;padding:24px} .q{margin:24px 0} .o{display:inline-block;border:2px solid #111;padding:12px 20px;margin:8px}</style><h1>Roll number: __________________</h1>'); items.forEach((item, index) => { popup.document.write(`<div class="q"><strong>${index + 1}. ${item.stem}</strong><br>${Object.entries(item.options || {}).map(([key, value]) => `<span class="o">${key}. ${value}</span>`).join('')}</div>`); }); popup.document.write('</body></html>'); popup.document.close(); popup.print(); };
+  }
   state.check.itemsList = items;
   state.check.values = {};
   const header = addText(editor, 'div', '', 'response-header');
   addText(header, 'strong', 'Child / roll');
-  items.forEach((_, index) => addText(header, 'strong', state.check.check_type === 'mcq' ? `Q${index + 1}` : `T${index + 1}`));
+  items.forEach((_, index) => addText(header, 'strong', isMcqCheck(state.check) ? `Q${index + 1}` : `T${index + 1}`));
   state.check.students.forEach((student) => {
     const row = addText(editor, 'div', '', 'response-row');
     const identity = addText(row, 'div', '', 'child-identity');
@@ -192,14 +204,14 @@ async function loadCheck(checkId) {
     absent.onchange = () => {
       row.classList.toggle('row-absent', absent.checked);
       Object.values(state.check.values).filter((entry) => entry.roll === student.roll_no).forEach((entry) => {
-        entry.button.dataset.value = absent.checked ? 'absent' : (state.check.check_type === 'mcq' ? 'A' : 'got_it');
-        entry.button.textContent = absent.checked ? '—' : (state.check.check_type === 'mcq' ? 'A' : '✓');
+        entry.button.dataset.value = absent.checked ? 'absent' : (isMcqCheck(state.check) ? 'A' : 'got_it');
+        entry.button.textContent = absent.checked ? '—' : (isMcqCheck(state.check) ? 'A' : '✓');
       });
     };
     identity.appendChild(absent);
     items.forEach((item, index) => {
-      const button = addText(row, 'button', state.check.check_type === 'mcq' ? 'A' : '✓', 'response-cell');
-      button.dataset.value = state.check.check_type === 'mcq' ? 'A' : 'got_it';
+      const button = addText(row, 'button', isMcqCheck(state.check) ? 'A' : '✓', 'response-cell');
+      button.dataset.value = isMcqCheck(state.check) ? 'A' : 'got_it';
       button.onclick = () => cycleResponse(button, state.check.check_type);
       button.roll = student.roll_no; button.itemIndex = index;
       state.check.values[`${student.roll_no}-${index}`] = {button, roll: student.roll_no, item, index};
@@ -219,7 +231,7 @@ function addErrorPicker(row, button, item) {
 }
 
 function cycleResponse(button, type) {
-  const values = type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
+  const values = type === 'mcq_read_aloud' ? ['A', 'B', 'C'] : (type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet']);
   const next = values[(values.indexOf(button.dataset.value) + 1) % values.length];
   button.dataset.value = next; button.textContent = type === 'mcq' ? next : ({got_it:'✓', partly:'~', not_yet:'✗'}[next]);
   button.classList.toggle('wrong', next !== 'A' && next !== 'got_it');
@@ -231,7 +243,7 @@ function collectResponses() {
     const button = entry.button;
     const [roll_no, item_index] = key.split('-').map(Number);
     const response = {roll_no, item_index};
-    if (state.check.check_type === 'mcq') response.chosen_option = button.dataset.value;
+    if (isMcqCheck(state.check)) response.chosen_option = button.dataset.value;
     else { response.rating = button.dataset.value; response.error_id = button.errorId || null; }
     responses.push(response);
   });
@@ -268,7 +280,7 @@ function renderClassCounts() {
     const card = addText(editor, 'div', '', 'count-card');
     addText(card, 'strong', `${state.check.check_type === 'mcq' ? 'Question' : 'Task'} ${index + 1}`);
     const inputs = {};
-    const labels = state.check.check_type === 'mcq' ? ['A', 'B', 'C', 'D'] : ['got_it', 'partly', 'not_yet'];
+    const labels = isMcqCheck(state.check) ? Object.keys(item.options || {'A':'','B':'','C':'','D':''}) : ['got_it', 'partly', 'not_yet'];
     labels.forEach((label) => { const wrapper = addText(card, 'label', label); const input = document.createElement('input'); input.type = 'number'; input.min = 0; input.value = 0; input.dataset.label = label; wrapper.appendChild(input); inputs[label] = input; });
     state.check.countInputs.push(inputs);
   });
@@ -288,7 +300,7 @@ async function load() {
     if (code) localStorage.setItem('saathi_access_code', code);
   }
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
-  state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; renderClasses();
+  state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
   await loadContext();
 }
@@ -323,7 +335,15 @@ $('class-form').addEventListener('submit', async (event) => { event.preventDefau
 document.querySelectorAll('.tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((view) => view.classList.add('hidden')); $(button.dataset.view).classList.remove('hidden'); if (button.dataset.view === 'usage-view') loadUsage(); }));
 load();
 $('lesson-select').addEventListener('change', (event) => loadCheck(event.target.value));
-$('save-results').addEventListener('click', async () => { if (!state.check) return; const payload = state.check.mode === 'class_count' ? {check_mode:'class_count', class_counts:collectClassCounts()} : {check_mode:'each_child', responses:collectResponses()}; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); alert('Results saved. Open Next steps to see the diagnosis.'); });
+async function renderQuickAnalysis() {
+  const insight = await getJson(`/api/checks/${state.check.id}/insight`);
+  const panel = $('check-step-analysis'); if (!panel) return;
+  panel.replaceChildren(); addText(panel, 'h2', '④ Class analysis'); addText(panel, 'p', 'Confirmed results from the selected lesson.');
+  const bars = addText(panel, 'div', '', 'analysis-metrics');
+  insight.concepts.forEach((concept) => { const metric = addText(bars, 'div', '', 'analysis-metric'); addText(metric, 'strong', concept.concept_id); addText(metric, 'span', `${concept.percent_correct}% · ${concept.status}`); });
+  const next = addText(panel, 'button', 'See what to do next →', 'primary'); next.onclick = () => document.querySelector('[data-view="next-view"]').click();
+}
+$('save-results').addEventListener('click', async () => { if (!state.check) return; const payload = state.check.mode === 'class_count' ? {check_mode:'class_count', class_counts:collectClassCounts()} : {check_mode:'each_child', responses:collectResponses()}; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); await renderQuickAnalysis(); alert('Results confirmed. The analysis is ready.'); });
 $('sample-results').addEventListener('click', fillSampleResults);
 $('each-child-mode').addEventListener('click', () => { state.check.mode = 'each_child'; loadCheck(state.check.id); });
 $('class-count-mode').addEventListener('click', () => { state.check.mode = 'class_count'; renderClassCounts(); });
@@ -332,9 +352,9 @@ document.querySelector('[data-view="next-view"]').addEventListener('click', asyn
 if (!document.getElementById('progress-history')) { const history = document.createElement('div'); history.id = 'progress-history'; history.className = 'hidden'; $('next-content').append(history); }
 $('next-tab-button').addEventListener('click', () => { $('next-tab-content').classList.remove('hidden'); $('resources-tab-content').classList.add('hidden'); });
 $('resources-tab-button').addEventListener('click', () => { $('next-tab-content').classList.add('hidden'); $('resources-tab-content').classList.remove('hidden'); });
-$('generate-worksheets').addEventListener('click', () => { $('resource-content').textContent = 'Worksheet generation will run only after confirmed paper results and the Resource Builder is connected.'; });
-$('generate-meetings').addEventListener('click', () => { $('resource-content').textContent = 'Meeting-plan generation will run only after confirmed results and the Resource Builder is connected.'; });
-$('generate-leader-onepager').addEventListener('click', () => { $('resource-content').textContent = 'The school-leader one-pager will be generated from confirmed class results and the selected next steps.'; });
+$('generate-worksheets').addEventListener('click', async () => { if (!state.check) { $('resource-content').textContent = 'Confirm results in Check first.'; return; } try { const result = await getJson(`/api/checks/${state.check.id}/resources/worksheets`, {method:'POST'}); $('resource-content').textContent = `Generated ${result.resources.resources.length} worksheets.`; } catch (error) { $('resource-content').textContent = error.message; } });
+$('generate-meetings').addEventListener('click', async () => { if (!state.check) { $('resource-content').textContent = 'Confirm results in Check first.'; return; } try { const result = await getJson(`/api/checks/${state.check.id}/resources/meeting_plans`, {method:'POST'}); $('resource-content').textContent = `Generated ${result.resources.resources.length} parent–teacher meeting plans.`; } catch (error) { $('resource-content').textContent = error.message; } });
+$('generate-leader-onepager').addEventListener('click', async () => { if (!state.check) { $('resource-content').textContent = 'Confirm results in Check first.'; return; } const insight = await getJson(`/api/checks/${state.check.id}/insight`); $('resource-content').textContent = `School leader one-pager: class evidence shows ${insight.top_errors.length} recorded error patterns. Review the confirmed results and next-step actions with the school team.`; });
 
 // The roll editor deliberately uses textContent for names and imported values.
 async function loadRoll() {
@@ -362,6 +382,12 @@ function showRollPreview(rows) {
     members.forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name}`));
   }
 }
+function renderReviewGrid(parent, review) {
+  const card = addText(parent, 'section', '', 'review-grid-card'); addText(card, 'h3', 'Review answers before confirming');
+  const table = document.createElement('table'); const head = table.insertRow(); ['Roll', 'Question', 'Read', 'Mark', 'Confidence'].forEach((label) => addText(head.insertCell(), 'strong', label));
+  review.cells.forEach((cell) => { const row = table.insertRow(); addText(row.insertCell(), 'span', cell.roll_no); addText(row.insertCell(), 'span', `Q${cell.question_number}`); const answer = document.createElement('select'); ['A','B','C','D','unreadable'].forEach((option) => answer.add(new Option(option, option))); answer.value = cell.answer || 'unreadable'; row.insertCell().append(answer); const mark = addText(row.insertCell(), 'span', cell.mark === 1 ? '✓' : cell.mark === 0 ? '✗' : '?'); const confidence = addText(row.insertCell(), 'span', cell.confidence); if (cell.confidence !== 'high' || cell.unreadable) row.className = 'low-confidence'; answer.onchange = () => { cell.answer = answer.value; cell.mark = answer.value === review.questions[cell.question_number - 1].correct_option ? 1 : 0; mark.textContent = cell.mark ? '✓' : '✗'; cell.edited = true; }; });
+  card.append(table); addText(card, 'p', 'Low-confidence and unreadable cells are highlighted. Tap a cell to correct what was read.'); const confirm = addText(card, 'button', 'Confirm results', 'primary'); confirm.onclick = async () => { const payload = review.cells.map((cell) => ({roll_no: cell.roll_no, question_number: cell.question_number, answer: cell.answer, mark: cell.mark, max_marks: 1, edited: Boolean(cell.edited)})); await getJson(`/api/papers/${review.paper_id}/results/confirm`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); confirm.textContent = 'Results confirmed ✓'; confirm.disabled = true; };
+}
 function buildSimpleCheckFlow() {
   const view = $('check-view');
   if (document.getElementById('check-step-submissions')) return;
@@ -369,6 +395,8 @@ function buildSimpleCheckFlow() {
   addText(title, 'p', 'Check learning', 'eyebrow'); addText(title, 'h2', 'Understand what your class knows.');
   addText(title, 'p', 'Upload the class roll and student work. Saathi will organise the evidence and show class, student, and question mastery.'); view.append(title);
 
+  const existingCards = view.querySelectorAll(':scope > .card');
+  if (existingCards[1]) existingCards[1].remove();
   const roll = document.querySelector('#check-view > .card');
   if (roll) { const heading = roll.querySelector('h2'); if (heading) heading.textContent = '① Class roll'; }
   const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
@@ -386,6 +414,13 @@ function buildSimpleCheckFlow() {
   });
   if (!roll) view.append(roll);
 
+  const lessonCard = document.createElement('section'); lessonCard.id = 'check-step-lesson'; lessonCard.className = 'card check-flow-card';
+  addText(lessonCard, 'h2', '② Choose the lesson'); addText(lessonCard, 'p', 'The selected lesson’s check is the answer key.');
+  const lessonSelect = document.createElement('select'); lessonSelect.id = 'lesson-select'; lessonCard.append(lessonSelect);
+  const keyPreview = document.createElement('div'); keyPreview.id = 'check-editor'; keyPreview.className = 'hidden'; lessonCard.append(keyPreview);
+  const print = addText(lessonCard, 'button', 'Print answer sheet', 'secondary'); print.type = 'button'; print.onclick = () => window.print();
+  view.append(lessonCard); loadLessons().catch((error) => addText(lessonCard, 'p', error.message, 'roll-message error'));
+
   const submissions = document.createElement('section'); submissions.id = 'check-step-submissions'; submissions.className = 'card check-flow-card';
   addText(submissions, 'h2', '② How are your submissions organized?');
   addText(submissions, 'p', 'Choose the format that matches the files you have.');
@@ -402,6 +437,7 @@ function buildSimpleCheckFlow() {
       addText(uploadArea, 'strong', direction);
       const drop = addText(uploadArea, 'label', 'Drag and drop student files here, or click to browse', 'drop-zone');
       const input = document.createElement('input'); input.type = 'file'; input.accept = '.pdf,.png,.jpg,.jpeg,.heic,.doc,.docx,.ppt,.pptx,application/pdf,image/*'; input.multiple = mode === 'multiple'; drop.append(input);
+      input.addEventListener('change', async () => { if (!state.check || !input.files.length) return; const form = new FormData(); [...input.files].forEach((file) => form.append('files', file)); try { const uploaded = await getJson(`/api/checks/${state.check.id}/submissions`, {method:'POST', body:form}); state.lastPaperId = uploaded.paper_id; const table = document.createElement('div'); table.className = 'matching-table'; uploaded.files.forEach((item) => { const row = addText(table, 'p', `${item.filename} → ${item.child ? `${item.child.roll_no}. ${item.child.first_name} (${item.child.readiness_level})` : 'Assign a child'} · ${item.status}`); if (!item.child) { const select = document.createElement('select'); select.add(new Option('Assign roll number', '')); for (const child of state.check.students) select.add(new Option(`${child.roll_no}. ${child.first_name || ''}`, child.roll_no)); select.onchange = async () => { if (select.value) { await getJson(`/api/papers/${uploaded.paper_id}/assign-submission`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file_id:item.file_id,roll_no:Number(select.value)})}); row.append(' ✓ assigned'); } }; row.append(' ', select); } }); uploadArea.append(table); const read = await getJson(`/api/papers/${uploaded.paper_id}/read-submissions`, {method:'POST'}); const review = await getJson(`/api/papers/${uploaded.paper_id}/review-grid`); renderReviewGrid(uploadArea, review); } catch (error) { addText(uploadArea, 'p', error.message, 'roll-message error'); } });
       const note = addText(uploadArea, 'small', mode === 'multiple' ? 'PDF, image, Word, and PowerPoint files are supported.' : 'PDF, image, Word, and PowerPoint files are supported.');
       input.addEventListener('change', () => { note.textContent = input.files.length ? `${input.files.length} file${input.files.length === 1 ? '' : 's'} selected.` : 'No files selected.'; });
       if (mode === 'single') { const drive = addText(uploadArea, 'button', 'Import from Google Drive', 'secondary'); drive.type = 'button'; drive.disabled = true; drive.title = 'Google Drive import will be connected in a later step.'; }

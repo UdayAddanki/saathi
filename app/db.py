@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS pending_warmups(class_id TEXT PRIMARY KEY,warmup TEXT
 CREATE TABLE IF NOT EXISTS teachers(id TEXT PRIMARY KEY,username TEXT UNIQUE COLLATE NOCASE,email TEXT UNIQUE COLLATE NOCASE,password_hash TEXT,password_salt TEXT,created_at TEXT,last_active TEXT,force_password_change INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,teacher_id TEXT,token_hash TEXT UNIQUE,expires_at TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS password_resets(id TEXT PRIMARY KEY,teacher_id TEXT,token_hash TEXT UNIQUE,expires_at TEXT,used INTEGER DEFAULT 0,created_at TEXT);
+CREATE TABLE IF NOT EXISTS check_corrections(paper_id TEXT PRIMARY KEY,count INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS resources(id TEXT PRIMARY KEY,check_id TEXT,kind TEXT,readiness_level TEXT,roll_no INTEGER,content_json TEXT,review_json TEXT,created_at TEXT);
+CREATE TABLE IF NOT EXISTS paper_checks(paper_id TEXT PRIMARY KEY,check_id TEXT);
 """
 def conn() -> sqlite3.Connection:
     c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row; return c
@@ -39,6 +42,9 @@ def init_db() -> None:
         columns = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
         if columns and "teacher_id" not in columns:
             c.execute(f"ALTER TABLE {table} ADD COLUMN teacher_id TEXT")
+    sheet_columns = {row[1] for row in c.execute("PRAGMA table_info(sheet_files)")}
+    if "teacher_id" not in sheet_columns:
+        c.execute("ALTER TABLE sheet_files ADD COLUMN teacher_id TEXT")
     response_columns = {row[1] for row in c.execute("PRAGMA table_info(responses)")}
     if "check_mode" not in response_columns:
         c.execute("ALTER TABLE responses ADD COLUMN check_mode TEXT DEFAULT 'each_child'")
