@@ -290,7 +290,7 @@ async function load() {
     if (code) localStorage.setItem('saathi_access_code', code);
   }
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
-  state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; renderClasses();
+  state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
   await loadContext();
 }
@@ -380,6 +380,8 @@ function buildSimpleCheckFlow() {
   addText(title, 'p', 'Check learning', 'eyebrow'); addText(title, 'h2', 'Understand what your class knows.');
   addText(title, 'p', 'Upload the class roll and student work. Saathi will organise the evidence and show class, student, and question mastery.'); view.append(title);
 
+  const existingCards = view.querySelectorAll(':scope > .card');
+  if (existingCards[1]) existingCards[1].remove();
   const roll = document.querySelector('#check-view > .card');
   if (roll) { const heading = roll.querySelector('h2'); if (heading) heading.textContent = '① Class roll'; }
   const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
@@ -396,6 +398,13 @@ function buildSimpleCheckFlow() {
     } catch (error) { rollStatus.textContent = error.message; }
   });
   if (!roll) view.append(roll);
+
+  const lessonCard = document.createElement('section'); lessonCard.id = 'check-step-lesson'; lessonCard.className = 'card check-flow-card';
+  addText(lessonCard, 'h2', '② Choose the lesson'); addText(lessonCard, 'p', 'The selected lesson’s check is the answer key.');
+  const lessonSelect = document.createElement('select'); lessonSelect.id = 'lesson-select'; lessonCard.append(lessonSelect);
+  const keyPreview = document.createElement('div'); keyPreview.id = 'check-editor'; keyPreview.className = 'hidden'; lessonCard.append(keyPreview);
+  const print = addText(lessonCard, 'button', 'Print answer sheet', 'secondary'); print.type = 'button'; print.onclick = () => window.print();
+  view.append(lessonCard); loadLessons().catch((error) => addText(lessonCard, 'p', error.message, 'roll-message error'));
 
   const submissions = document.createElement('section'); submissions.id = 'check-step-submissions'; submissions.className = 'card check-flow-card';
   addText(submissions, 'h2', '② How are your submissions organized?');
