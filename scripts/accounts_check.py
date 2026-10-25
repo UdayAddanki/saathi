@@ -62,7 +62,12 @@ def plans_step(pa, pb, base, classes, db_path, fake):
     for page, class_id, topic in ((pa, classes['a'], 'place value'), (pb, classes['b'], 'numbers 1 to 20')):
         started = time.perf_counter(); data = require(page.request.post(base + '/api/plans', data={'class_id': class_id, 'subject': 'Mathematics', 'chapter_or_topic': topic, 'lesson_type': '5-step'}, timeout=300000), 'real Plan'); calls.append((data, round(time.perf_counter()-started, 2)))
     usage = [item[0].get('usage', {}).get('total', {}) for item in calls]
-    return result('plans', True, 'Two real Plan calls completed.', ids={'a': (calls[0][0]['id'], calls[0][0]['check_id']), 'b': (calls[1][0]['id'], calls[1][0]['check_id'])}, calls=calls, usage=usage)
+    details = []
+    for label, (_, elapsed), metrics in zip(('A', 'B'), calls, usage):
+        details.append(f"Teacher {label}: {elapsed:.2f}s; input={metrics.get('input_tokens', 0)}, cached={metrics.get('cached_input_tokens', 0)}, output={metrics.get('output_tokens', 0)}, cost=${metrics.get('cost_usd', 0):.6f}, provider_cost=${metrics.get('provider_cost_usd', 0):.6f}")
+    totals = {key: sum(item.get(key, 0) for item in usage) for key in ('input_tokens', 'cached_input_tokens', 'output_tokens', 'cost_usd', 'provider_cost_usd')}
+    details.append(f"Total: input={totals['input_tokens']}, cached={totals['cached_input_tokens']}, output={totals['output_tokens']}, cost=${totals['cost_usd']:.6f}, provider_cost=${totals['provider_cost_usd']:.6f}")
+    return result('plans', True, 'Two real Plan calls completed. ' + ' | '.join(details), ids={'a': (calls[0][0]['id'], calls[0][0]['check_id']), 'b': (calls[1][0]['id'], calls[1][0]['check_id'])}, calls=calls, usage=usage)
 
 def ownership_step(pa, pb, base, classes, ids):
     for page, other in ((pa, 'b'), (pb, 'a')):
