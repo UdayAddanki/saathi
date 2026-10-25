@@ -28,3 +28,43 @@ main { max-width:1080px; margin:28px auto; } .hero { max-width:680px; margin-bot
 .tabs { position:fixed; bottom:0; left:0; right:0; z-index:5; display:flex; justify-content:center; gap:4px; padding:10px; background:white; border-top:1px solid #dbe7df; box-shadow:0 -4px 15px #0000000b; } .tabs button { color:var(--teal); background:white; } .tabs button.active { background:var(--teal); color:white; } dialog { width:min(540px,calc(100% - 30px)); border:0; padding:0; border-radius:15px; } dialog::backdrop { background:#093d3b88; } fieldset { border:1px solid #c7d9d1; border-radius:9px; } fieldset label { font-weight:400; }
 @media (max-width:700px) { .topbar { flex-wrap:wrap; align-items:center; } .class-picker { order:3; width:100%; margin-left:0; } .topbar .secondary { margin-left:auto; } .progress { flex-direction:column; gap:7px; } .roll-columns { grid-template-columns:1fr; } .response-header,.response-row { grid-template-columns:82px repeat(5,minmax(32px,1fr)); } .response-cell { padding:8px 2px; } .submission-choices,.analysis-metrics { grid-template-columns:1fr; } }
 @media print { body { padding:0; background:white; } .topbar,.tabs,.hero,#plan-form,.progress,.actions { display:none !important; } .card { border:0; box-shadow:none; } }
+
+/* Classroom notebook theme: visual-only layer. */
+:root {
+  --chalkboard: #2f5d50;
+  --paper: #fffdf6;
+  --card: #ffffff;
+  --ink: #1f2a2e;
+  --saffron: #f2a93b;
+  --sky: #246b9b;
+  --low: #b9362a;
+  --mid: #8a5a00;
+  --high: #176e63;
+  --notebook-line: rgba(93, 169, 233, .13);
+  --wood: #c99b62;
+  --radius: 16px;
+  --shadow: 0 8px 20px rgba(31, 42, 46, .10);
+}
+html { background: var(--paper); }
+body { min-height:100vh; color:var(--ink); background-color:var(--paper); background-image:linear-gradient(90deg, transparent 0 46px, rgba(211,73,67,.22) 47px, transparent 48px), repeating-linear-gradient(0deg, transparent 0 31px, var(--notebook-line) 32px); font-size:16px; }
+.topbar { max-width:none; margin:0 -18px; padding:18px max(18px, calc((100vw - 1080px)/2)); color:#fff; background-color:var(--chalkboard); border-bottom:7px solid var(--wood); position:relative; }
+.topbar h1 { color:#fff; font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif; letter-spacing:.02em; text-shadow:1px 2px rgba(255,255,255,.13); }
+.topbar .eyebrow { color:#ffd27b; }
+.card { position:relative; border:1px solid #eadfca; border-radius:var(--radius); background:var(--card); box-shadow:var(--shadow); }
+.card::before { content:""; position:absolute; top:-7px; right:24px; width:76px; height:18px; border-radius:2px; background:rgba(242,169,59,.62); transform:rotate(2deg); pointer-events:none; }
+.card:nth-child(3n)::before { background:rgba(93,169,233,.48); transform:rotate(-3deg); }
+button { min-height:44px; border-radius:12px; box-shadow:0 3px 0 rgba(31,42,46,.15); transition:transform .12s ease,box-shadow .12s ease; }
+button:hover { transform:translateY(-2px); } button:active { transform:translateY(1px); box-shadow:0 1px 0 rgba(31,42,46,.15); }
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:3px solid var(--sky); outline-offset:2px; }
+.primary { background:var(--chalkboard); color:#fff; } .secondary { background:#e8f3ee; color:#174e45; }
+a { color:var(--sky); }
+.roll-low { background:#ffe5de; border-left:5px solid var(--low); } .roll-mid { background:#fff1cf; border-left:5px solid var(--mid); } .roll-high { background:#dff2ed; border-left:5px solid var(--high); }
+.roll-low h3::before { content:'🌱 '; } .roll-mid h3::before { content:'🌿 '; } .roll-high h3::before { content:'🌳 '; }
+.lesson-type { border:2px solid transparent; } .lesson-type:nth-child(1)::before { content:'🪜 '; } .lesson-type:nth-child(2)::before { content:'🔍 '; } .lesson-type:nth-child(3)::before { content:'🛠️ '; } .lesson-type:nth-child(4)::before { content:'🌍 '; } .lesson-type:nth-child(5)::before { content:'✨ '; }
+.tabs button { min-width:88px; } .tabs button.active { background:var(--saffron); color:#3b2605; }
+.progress { background:#fffdf6; } .progress::after { content:'✎  Drawing up something useful…'; display:block; color:var(--chalkboard); animation:notebook-pencil 1.8s ease-in-out infinite; }
+.empty { background:#fffdf6; } .empty::before { content:'📘 ✎'; display:block; font-size:2rem; margin-bottom:10px; }
+@keyframes notebook-pencil { 0%,100% { opacity:.45; transform:translateX(0); } 50% { opacity:1; transform:translateX(12px); } }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition:none !important; } button:hover { transform:none; } }
+@media print { body { background:#fff !important; background-image:none !important; color:#000; } body::before,.card::before,.tabs,.topbar { display:none !important; } button { box-shadow:none; } }
+@media (max-width:700px) { body { background-image:linear-gradient(90deg, transparent 0 20px, rgba(211,73,67,.18) 21px, transparent 22px), repeating-linear-gradient(0deg, transparent 0 31px, var(--notebook-line) 32px); } .topbar { margin:0 -18px; padding:14px 18px; } .card::before { right:14px; width:55px; } .tabs { gap:0; } .tabs button { min-width:0; flex:1; padding:10px 4px; font-size:.82rem; } }
