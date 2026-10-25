@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from .config import ACCESS_CODE, DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL, ADMIN_CODE
-from .db import init_db, rows, one, conn
+from .db import init_db, rows, one, conn, add_run
 from typing import List
 from .models import PlanRequest, ClassRequest
 from .pipeline import generate_plan, generate_next_steps
