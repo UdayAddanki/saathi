@@ -30,6 +30,8 @@ from .agents.resources import resource_builder
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
+    if not APP_URL and not DEMO_MODE:
+        logger.warning('Set APP_URL so password-reset links work')
     yield
 
 app = FastAPI(title="Saathi", lifespan=lifespan)
@@ -145,7 +147,7 @@ def change_password(payload: dict, request: Request, response: Response):
     hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=?,force_password_change=0 where id=?', (hashed, salt, teacher['id'])); db.execute('delete from sessions where teacher_id=?', (teacher['id'],)); token = new_session(db, teacher['id']); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'ok': True}
 
 @app.post('/api/auth/forgot-password')
-def forgot_password(payload: dict):
+def forgot_password(payload: dict, request: Request):
     identity = str(payload.get('identity', '')).strip().lower(); teacher = one('select * from teachers where lower(username)=? or lower(email)=?', (identity, identity))
     if teacher:
         recent = rows('select id from password_resets where teacher_id=? and created_at>datetime("now","-1 hour")', (teacher['id'],))
@@ -153,7 +155,10 @@ def forgot_password(payload: dict):
         import secrets
         raw = secrets.token_urlsafe(32); db = conn(); db.execute('insert into password_resets values(?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, teacher['id'], token_hash(raw), int(time.time()) + 1800, 0)); db.commit(); db.close()
         from .mailer import send_reset_email
-        send_reset_email(teacher['email'], f'{APP_URL}/reset?token={raw}')
+        forwarded_proto = request.headers.get('x-forwarded-proto', request.url.scheme).split(',')[0].strip()
+        forwarded_host = request.headers.get('x-forwarded-host', request.headers.get('host', request.url.netloc)).split(',')[0].strip()
+        base_url = APP_URL or f'{forwarded_proto}://{forwarded_host}'
+        send_reset_email(teacher['email'], f'{base_url.rstrip("/")}/reset?token={raw}')
     return {'message': "If an account exists, we've emailed a reset link"}
 
 @app.post('/api/auth/reset-password')

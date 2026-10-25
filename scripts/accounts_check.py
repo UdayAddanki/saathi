@@ -47,7 +47,7 @@ def main() -> int:
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="saathi-accounts-") as temp:
         db_path = Path(temp) / "accounts.db"
-        env = os.environ.copy(); env.update({"DEMO_MODE": "true", "PORT": str(port), "SAATHI_DB_PATH": str(db_path), "PYTHONUNBUFFERED": "1"})
+        env = os.environ.copy(); env.update({"DEMO_MODE": "true", "PORT": str(port), "APP_URL": f"http://127.0.0.1:{port}", "SAATHI_DB_PATH": str(db_path), "PYTHONUNBUFFERED": "1"})
         log_path = Path(temp) / "server.log"
         log_file = log_path.open("w+")
         server = subprocess.Popen([sys.executable, "run.py"], cwd=ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT, text=True)

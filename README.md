@@ -32,5 +32,6 @@ The roll-import fixtures are in `tests/fixtures/class_roll/`. Try either `class_
 2. In Render, choose **New → Blueprint** and connect the GitHub repository.
 3. Render reads `render.yaml`, installs the requirements, and starts `python run.py`.
 4. In the service Environment settings, set `PORTKEY_API_KEY` to the Portkey key, choose a strong `ACCESS_CODE`, and leave `DAILY_BUDGET_USD` at `1.00` or choose a budget appropriate for the course.
-5. Deploy and open the generated `onrender.com` URL. Enter the access code once in the browser when prompted.
-6. Check `/api/health`, then create one small test lesson and inspect the Usage tab. SQLite is stored at the repository path, which works for a live demo; use persistent disk or an external database before production use because an ephemeral Render instance can lose local files on redeploy.
+5. Set `APP_URL` to the complete public Render URL, for example `https://saathi-example.onrender.com`, so password-reset links point to the deployed app. If SMTP is configured, also set the SMTP variables.
+6. Deploy and open the generated `onrender.com` URL. Enter the access code once in the browser when prompted.
+7. Check `/api/health`, then create one small test lesson and inspect the Usage tab. SQLite is stored at the repository path, which works for a live demo; use persistent disk or an external database before production use because an ephemeral Render instance can lose local files on redeploy.
