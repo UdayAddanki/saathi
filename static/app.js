@@ -10,6 +10,13 @@ function addText(parent, tag, text, className = '') {
   parent.appendChild(element);
   return element;
 }
+function classroomGreeting() {
+  const now = new Date(); const hour = now.getHours(); const time = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const note = ['Small steps every day add up.', 'Every child can grow.', 'Your careful noticing makes a difference.'][now.getDate() % 3];
+  const greeting = document.createElement('p'); greeting.className = 'classroom-greeting'; greeting.textContent = `${time}! ☀️ ${note}`; document.querySelector('.topbar')?.append(greeting);
+}
+function celebrate(message = 'Ready! ⭐') { const burst = document.createElement('div'); burst.className = 'star-burst'; burst.setAttribute('aria-live', 'polite'); burst.textContent = `✦  ${message}  ✦`; document.body.append(burst); setTimeout(() => burst.remove(), 1200); }
+classroomGreeting();
 
 async function getJson(url, options) {
   options = options || {};
