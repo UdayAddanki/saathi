@@ -348,6 +348,48 @@ function showRollPreview(rows) {
     members.forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name}`));
   }
 }
+function buildSimpleCheckFlow() {
+  const view = $('check-view');
+  view.replaceChildren();
+  const title = document.createElement('div'); title.className = 'hero';
+  addText(title, 'p', 'Check learning', 'eyebrow'); addText(title, 'h2', 'Understand what your class knows.');
+  addText(title, 'p', 'Upload the class roll and student work. Saathi will organise the evidence and show class, student, and question mastery.'); view.append(title);
+
+  const roll = document.createElement('section'); roll.className = 'card check-flow-card';
+  addText(roll, 'h2', '① Upload the class roll');
+  addText(roll, 'p', 'Upload one PDF with three clearly labelled sections: High readiness, Mid readiness, and Low readiness.');
+  const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
+  const rollStatus = addText(roll, 'p', 'No class roll uploaded.', 'upload-status'); rollInput.addEventListener('change', () => { rollStatus.textContent = rollInput.files[0] ? `Ready: ${rollInput.files[0].name}` : 'No class roll uploaded.'; });
+  view.append(roll);
+
+  const submissions = document.createElement('section'); submissions.className = 'card check-flow-card';
+  addText(submissions, 'h2', '② How are your submissions organized?');
+  addText(submissions, 'p', 'Choose the format that matches the files you have.');
+  const choices = document.createElement('div'); choices.className = 'submission-choices'; submissions.append(choices);
+  const uploadArea = document.createElement('div'); uploadArea.className = 'submission-upload hidden'; submissions.append(uploadArea);
+  const cards = [
+    ['each-student', 'Each student is one file', 'Upload a file for each student. You can upload many at once.', 'Upload one file per student. You can add more files to this same assignment later.', 'multiple'],
+    ['all-students', 'All students in one file', 'Upload a single file containing all student submissions.', 'Upload the document or import from Google Drive', 'single']
+  ];
+  cards.forEach(([id, heading, description, direction, mode]) => {
+    const card = document.createElement('button'); card.type = 'button'; card.className = 'submission-card'; card.dataset.mode = mode;
+    addText(card, 'strong', heading); addText(card, 'span', description); card.addEventListener('click', () => {
+      choices.querySelectorAll('.submission-card').forEach((item) => item.classList.remove('selected')); card.classList.add('selected'); uploadArea.replaceChildren(); uploadArea.classList.remove('hidden');
+      addText(uploadArea, 'strong', direction);
+      const drop = addText(uploadArea, 'label', 'Drag and drop student files here, or click to browse', 'drop-zone');
+      const input = document.createElement('input'); input.type = 'file'; input.accept = '.pdf,.png,.jpg,.jpeg,.heic,.doc,.docx,.ppt,.pptx,application/pdf,image/*'; input.multiple = mode === 'multiple'; drop.append(input);
+      const note = addText(uploadArea, 'small', mode === 'multiple' ? 'PDF, image, Word, and PowerPoint files are supported.' : 'PDF, image, Word, and PowerPoint files are supported.');
+      input.addEventListener('change', () => { note.textContent = input.files.length ? `${input.files.length} file${input.files.length === 1 ? '' : 's'} selected.` : 'No files selected.'; });
+      if (mode === 'single') { const drive = addText(uploadArea, 'button', 'Import from Google Drive', 'secondary'); drive.type = 'button'; drive.disabled = true; drive.title = 'Google Drive import will be connected in a later step.'; }
+    }); choices.append(card);
+  }); view.append(submissions);
+
+  const analysis = document.createElement('section'); analysis.className = 'card check-flow-card';
+  addText(analysis, 'h2', '③ Class analysis'); addText(analysis, 'p', 'After the submissions are uploaded and confirmed, your results will appear here.');
+  const metrics = document.createElement('div'); metrics.className = 'analysis-metrics';
+  [['Class average', '—'], ['Student-wise mastery', 'Upload submissions to calculate'], ['Question-wise mastery', 'Upload submissions to calculate']].forEach(([label, value]) => { const metric = document.createElement('div'); metric.className = 'analysis-metric'; addText(metric, 'strong', label); addText(metric, 'span', value); metrics.append(metric); });
+  analysis.append(metrics); view.append(analysis);
+}
 function labelCheckSteps() {
   const cards = document.querySelectorAll('#check-view > .card');
   if (cards[0]) { cards[0].querySelector('h2').textContent = '① Class roll'; }
@@ -362,7 +404,7 @@ function labelCheckSteps() {
   const quick = document.getElementById('check-editor');
   if (quick && !document.getElementById('quick-entry-link')) { const link = document.createElement('p'); link.id = 'quick-entry-link'; link.textContent = 'No answer sheets? Enter results quickly'; quick.before(link); }
 }
-document.querySelector('[data-view="check-view"]').addEventListener('click', () => { labelCheckSteps(); loadRoll(); });
+document.querySelector('[data-view="check-view"]').addEventListener('click', buildSimpleCheckFlow);
 $('download-roll').addEventListener('click', (event) => { event.preventDefault(); window.location.href = `/api/classes/${selectedClass().id}/roll-template.csv`; });
 $('upload-roll').addEventListener('click', async () => {
   const file = $('roll-file').files[0]; if (!file) return;
