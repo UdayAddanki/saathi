@@ -86,6 +86,7 @@ def ownership_step(pa, pb, base, classes, ids):
 def relogin(page, base, class_id, plan_id):
     require(page.request.post(base + '/api/auth/logout'), 'logout'); page.goto(base); page.locator('#show-login').click(); page.locator('#login-username').fill('teacher-a-live'); page.locator('#login-password').fill('Strong-password-123'); page.locator('#login-form button').click(); page.wait_for_timeout(300)
     require(page.request.get(base + f'/api/classes/{class_id}'), 'class after relogin'); require(page.request.get(base + f'/api/classes/{class_id}/roll'), 'roll after relogin'); require(page.request.get(base + f'/api/plans/{plan_id}'), 'lesson after relogin')
+    if 'hidden' in (page.locator('#app-main').get_attribute('class') or ''): raise AssertionError('relogin: app is hidden after UI login')
     return result('relogin', True, 'A logged out, logged back in, and retained class, roll, and lesson.')
 
 def reset_step(page, base, log_path):
@@ -105,7 +106,9 @@ def run(fake):
             with sync_playwright() as pw:
                 browser=pw.chromium.launch(); ca=browser.new_context(); cb=browser.new_context(); pa=ca.new_page(); pb=cb.new_page()
                 signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.')); require(pa.request.post(base+'/api/auth/setup-complete'),'wizard skip'); records.append(result('wizard',True,'Setup wizard skip persisted.'))
-                classes={'a':create_class(pa,base,3,'TS_SCERT','A'),'b':create_class(pb,base,1,'NCERT','B')}; records.append(roll_step(pa,pb,base,classes)); plans=plans_step(pa,pb,base,classes,db_path,fake); records.append({k:v for k,v in plans.items() if k!='ids'}); ids=plans['ids']; records.append(ownership_step(pa,pb,base,classes,ids)); records.append(relogin(pa,base,classes['a'],ids['a'][0])); reset,reset_page=reset_step(pa,base,log_path); records.append(reset); pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(300); records.append(result('demo',True,'Demo login completed.'))
+                classes={'a':create_class(pa,base,3,'TS_SCERT','A'),'b':create_class(pb,base,1,'NCERT','B')}; records.append(roll_step(pa,pb,base,classes)); plans=plans_step(pa,pb,base,classes,db_path,fake); records.append({k:v for k,v in plans.items() if k!='ids'}); ids=plans['ids']; records.append(ownership_step(pa,pb,base,classes,ids)); records.append(relogin(pa,base,classes['a'],ids['a'][0])); reset,reset_page=reset_step(pa,base,log_path); records.append(reset); pa.reload(); pa.wait_for_timeout(300); records.append(result('reload',True,'App remained visible after reload.')); pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(500); 
+                if 'hidden' in (pb.locator('#app-main').get_attribute('class') or ''): raise AssertionError('demo: app remains hidden after demo login')
+                records.append(result('demo',True,'Demo login completed and app is visible.'))
                 admin=require(pa.request.get(base+'/admin/pilot',headers={'X-Admin-Code':'check-admin'}),'admin page'); require_text(pa.request.get(base+'/admin/pilot.csv',headers={'X-Admin-Code':'check-admin'}),'admin csv'); records.append(result('admin',True,f'Admin listed {len(admin["teachers"])} teachers and CSV downloaded.'))
                 for page,name in ((pa,'account-menu'),(reset_page,'reset')): page.screenshot(path=OUT/f'accounts-{name}.png',full_page=True)
                 records.append(result('screenshots',True,'Auth screenshots saved.')); browser.close()
