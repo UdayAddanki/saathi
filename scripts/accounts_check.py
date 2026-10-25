@@ -10,6 +10,7 @@ import re
 import socket
 import subprocess
 import sys
+import argparse
 import tempfile
 import time
 from pathlib import Path
@@ -35,8 +36,14 @@ def screenshot(page, name):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--fake-llm', action='store_true', help='Use the local test model instead of Portkey')
+    args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     results = []
+    def record(name, status, detail):
+        results.append((name, status, detail))
+        print(f'[{status.upper()}] {name}: {detail}', flush=True)
     port = free_port()
     with tempfile.TemporaryDirectory(prefix="saathi-accounts-") as temp:
         db_path = Path(temp) / "accounts.db"
@@ -61,7 +68,7 @@ def main() -> int:
                     page.locator('#show-signup').click(); screenshot(page, f'{username}-signup')
                     page.locator('#signup-username').fill(username); page.locator('#signup-password').fill('Strong-password-123'); page.locator('#signup-confirm').fill('Strong-password-123'); page.locator('#signup-email').fill(email); page.locator('#signup-consent').check(); page.locator('#signup-form button').click(); page.wait_for_timeout(500); page.reload(); page.wait_for_timeout(300)
                 signup(pa, 'teacher-a-live', 'teacher-a-live@example.com'); signup(pb, 'teacher-b-live', 'teacher-b-live@example.com')
-                results.append(('signup', 'pass', 'Teachers A and B signed up through the UI.'))
+                record('signup', 'pass', 'Teachers A and B signed up through the UI.')
                 # Account A creates its class through the same API used by the UI.
                 def create_class(page, grade, board, section):
                     response = api(page, 'POST', '/api/classes', data={'board':board,'grade':grade,'section':section,'class_size':38 if grade == 3 else 20,'period_minutes':40,'resources':[]}); assert response.ok, response.text; return response.json()['id']
@@ -70,26 +77,27 @@ def main() -> int:
                     preview = pa.request.post(base + f'/api/classes/{class_a}/roll/upload', multipart={'file': {'name': FIXTURE.name, 'mimeType':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'buffer':file.read()}})
                 assert preview.ok; saved = api(pa, 'POST', f'/api/classes/{class_a}/roll/save', data=preview.json()['rows']); assert saved.ok
                 roll = api(pa, 'GET', f'/api/classes/{class_a}/roll').json(); assert sum(x['readiness_level']=='low' for x in roll)==10 and sum(x['readiness_level']=='mid' for x in roll)==16 and sum(x['readiness_level']=='high' for x in roll)==12
-                results.append(('roll', 'pass', 'Teacher A saved 10 Low / 16 Mid / 12 High.'))
+                record('roll', 'pass', 'Teacher A saved 10 Low / 16 Mid / 12 High.')
                 # B gets a small typed roll through the same save route.
                 rows_b=[{'roll_no':i,'first_name':f'Child {i}','readiness_level':'mid'} for i in range(1,21)]; assert api(pb,'POST',f'/api/classes/{class_b}/roll/save',data=rows_b).ok
                 def plan(page, class_id, topic):
-                    response=api(page,'POST','/api/plans',data={'class_id':class_id,'subject':'Mathematics','chapter_or_topic':topic,'lesson_type':'5-step'}, timeout=120000); assert response.ok, response.text; return response.json()
-                lesson_a=plan(pa,class_a,'place value'); lesson_b=plan(pb,class_b,'numbers 1 to 20'); results.append(('plans','pass','Exactly one real Plan call per teacher completed.'))
+                    print(f'[RUNNING] Plan for {topic}', flush=True)
+                    response=api(page,'POST','/api/plans',data={'class_id':class_id,'subject':'Mathematics','chapter_or_topic':topic,'lesson_type':'5-step'}, timeout=300000); assert response.ok, response.text; return response.json()
+                lesson_a=plan(pa,class_a,'place value'); lesson_b=plan(pb,class_b,'numbers 1 to 20'); record('plans','pass','Exactly one real Plan call per teacher completed.')
                 check_a=lesson_a['check_id']; check_b=lesson_b['check_id']; plan_a=lesson_a['id']; plan_b=lesson_b['id']
                 for page, ids in ((pa,(class_a,plan_a,check_a)),(pb,(class_b,plan_b,check_b))):
                     other=(class_b,plan_b,check_b) if page is pa else (class_a,plan_a,check_a)
                     for path in (f'/api/classes/{other[0]}',f'/api/classes/{other[0]}/roll',f'/api/plans/{other[1]}',f'/api/checks/{other[2]}'): assert api(page,'GET',path).status==404
-                assert class_a not in [x['id'] for x in api(pb,'GET','/api/classes').json()]; assert class_b not in [x['id'] for x in api(pa,'GET','/api/classes').json()]; results.append(('ownership','pass','Both teachers received 404 for the other teacher’s IDs and saw only their own class.'))
-                pa.request.post(base+'/api/auth/logout'); pa.goto(base); pa.locator('#show-login').click(); pa.locator('#login-username').fill('teacher-a-live'); pa.locator('#login-password').fill('Strong-password-123'); pa.locator('#login-form button').click(); pa.wait_for_timeout(300); assert api(pa,'GET',f'/api/classes/{class_a}').ok and api(pa,'GET',f'/api/plans/{plan_a}').ok; results.append(('relogin','pass','Teacher A logged out, logged back in, and retained class, roll, and lesson.'))
+                assert class_a not in [x['id'] for x in api(pb,'GET','/api/classes').json()]; assert class_b not in [x['id'] for x in api(pa,'GET','/api/classes').json()]; record('ownership','pass','Both teachers received 404 for the other teacher’s IDs and saw only their own class.')
+                pa.request.post(base+'/api/auth/logout'); pa.goto(base); pa.locator('#show-login').click(); pa.locator('#login-username').fill('teacher-a-live'); pa.locator('#login-password').fill('Strong-password-123'); pa.locator('#login-form button').click(); pa.wait_for_timeout(300); assert api(pa,'GET',f'/api/classes/{class_a}').ok and api(pa,'GET',f'/api/plans/{plan_a}').ok; record('relogin','pass','Teacher A logged out, logged back in, and retained class, roll, and lesson.')
                 # Reset-link fallback is captured from the server output.
                 reset=pa.request.post(base+'/api/auth/forgot-password',data={'identity':'teacher-a-live@example.com'}); assert reset.ok
                 time.sleep(.3); log_file.flush(); raw=log_path.read_text()
-                match=re.search(r'Password reset link .*?: (http[^\s]+)',raw); assert match, 'reset link was not found in server log'; reset_page=b.new_page(); reset_page.goto(match.group(1)); reset_page.locator('#reset-password').fill('New-strong-password-123'); reset_page.locator('#reset-confirm').fill('New-strong-password-123'); reset_page.locator('#reset-form button').click(); assert api(reset_page,'POST','/api/auth/login',data={'username':'teacher-a-live','password':'New-strong-password-123'}).ok; results.append(('reset','pass','Reset link was read from the server log and the new password worked.'))
-                pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(300); results.append(('demo','pass','Demo login button completed.'))
+                match=re.search(r'Password reset link .*?: (http[^\s]+)',raw); assert match, 'reset link was not found in server log'; reset_page=b.new_page(); reset_page.goto(match.group(1)); reset_page.locator('#reset-password').fill('New-strong-password-123'); reset_page.locator('#reset-confirm').fill('New-strong-password-123'); reset_page.locator('#reset-form button').click(); assert api(reset_page,'POST','/api/auth/login',data={'username':'teacher-a-live','password':'New-strong-password-123'}).ok; record('reset','pass','Reset link was read from the server log and the new password worked.')
+                pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(300); record('demo','pass','Demo login button completed.')
                 screenshot(pa, 'account-menu'); screenshot(reset_page, 'reset'); browser.close()
         except Exception as error:
-            results.append(('overall','fail',str(error))); return_code=1
+            record('overall','fail',str(error)); return_code=1
         else: return_code=0
         finally:
             log_file.close()
