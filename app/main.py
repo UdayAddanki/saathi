@@ -24,6 +24,7 @@ from .marking import mark_answer
 from .agents.readers import answer_sheet_reader
 from pydantic_ai import BinaryContent
 from .usage import record
+from .agents.resources import resource_builder
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -263,6 +264,7 @@ async def upload_submissions(check_id: str, request: Request, files: List[Upload
         items = json.loads(check['items_json']); items = items if isinstance(items, list) else items.get('questions', items.get('tasks', []))
         paper_id = uuid.uuid4().hex; db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,datetime("now"))', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1)); db.commit(); db.close()
     else: paper_id = paper['id']
+    db = conn(); db.execute('insert or replace into paper_checks values(?,?)', (paper_id, check_id)); db.commit(); db.close()
     students = {int(row['roll_no']): row for row in rows('select roll_no,first_name,readiness_level from students where class_id=?', (check['class_id'],))}
     directory = ROOT / 'uploads' / check['class_id']; directory.mkdir(parents=True, exist_ok=True); output = []
     for file in files:
@@ -334,7 +336,13 @@ def confirm_results(paper_id: str, payload: list[dict], request: Request):
     for item in payload:
         db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, item['roll_no'], item['question_number'], item.get('mark'), item.get('max_marks', 1), 1, int(item.get('edited', False))))
     corrections = sum(1 for item in payload if item.get('edited'))
-    db.execute('insert or replace into check_corrections(paper_id,count) values(?,?)', (paper_id, corrections)); db.commit(); db.close(); return {'confirmed': True, 'count': len(payload), 'corrections': corrections}
+    db.execute('insert or replace into check_corrections(paper_id,count) values(?,?)', (paper_id, corrections))
+    mapping = db.execute('select check_id from paper_checks where paper_id=?', (paper_id,)).fetchone()
+    if mapping:
+        db.execute('delete from responses where check_id=?', (mapping[0],))
+        for item in payload:
+            db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,check_mode) values(?,?,?,?,?)', (mapping[0], item['roll_no'], int(item['question_number']) - 1, item.get('answer'), 'each_child'))
+    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload), 'corrections': corrections}
 
 @app.get('/api/papers/{paper_id}/progress')
 def paper_progress(paper_id: str, request: Request):
@@ -375,6 +383,21 @@ def insight(check_id: str, request: Request):
 def next_steps(check_id: str, request: Request):
     authorize(request)
     return generate_next_steps(check_id)
+
+@app.post('/api/checks/{check_id}/resources/{kind}')
+async def generate_resources(check_id: str, kind: str, request: Request):
+    authorize(request)
+    if kind not in {'worksheets', 'meeting_plans'}: raise HTTPException(422, 'Unknown resource type.')
+    check = one('select ch.*,lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
+    if not check: raise HTTPException(404, 'Check not found')
+    insight = analyze_results(check_id); rolls = []
+    if kind == 'meeting_plans':
+        students = rows('select roll_no from students where class_id=?', (check['class_id'],))
+        rolls = [item['roll_no'] for item in students[:5]]
+    run_id = add_run(check['class_id'], kind); prompt = f'kind={kind}; check_id={check_id}; insight={insight.model_dump_json()}; roll_numbers={rolls}. Return resources only.'
+    started = time.perf_counter(); result = await resource_builder.run(prompt); usage = record(run_id, 'resource_builder', result.usage, started)
+    content = result.output.model_dump(); db = conn(); db.execute('delete from resources where check_id=? and kind=?', (check_id, kind)); db.execute('insert into resources values(?,?,?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, check_id, kind, None, None, json.dumps(content), '{}',)); db.execute('update runs set status=?,total_cost_usd=? where id=?', ('complete', usage['cost_usd'], run_id)); db.commit(); db.close()
+    return {'check_id': check_id, 'kind': kind, 'resources': content, 'usage': usage, 'roll_numbers': rolls}
 
 @app.post('/api/checks/{check_id}/use-warmup')
 def use_warmup(check_id: str, request: Request):

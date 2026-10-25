@@ -201,6 +201,21 @@ class NextSteps(BaseModel):
     missed_lesson_catchup: str
     next_lesson_warmup: str
 
+class ResourceItem(BaseModel):
+    title: str
+    level: str = ''
+    items: list[str] = []
+    answers: list[str] = []
+    parent_guidance: str = ''
+    strengths: list[str] = []
+    hard_now: str = ''
+    home_activities: list[str] = []
+    opening_script: str = ''
+
+class ResourceSet(BaseModel):
+    kind: str
+    resources: list[ResourceItem]
+
 class ResultsRequest(BaseModel):
     check_mode: Literal["each_child", "class_count"]
     responses: list[dict] = []

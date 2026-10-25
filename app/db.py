@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS tool_calls(id TEXT PRIMARY KEY,run_id TEXT,agent_name
 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,kind TEXT,class_id TEXT,status TEXT,total_cost_usd REAL,created_at TEXT);
 CREATE TABLE IF NOT EXISTS pending_warmups(class_id TEXT PRIMARY KEY,warmup TEXT,source_check_id TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS check_corrections(paper_id TEXT PRIMARY KEY,count INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS resources(id TEXT PRIMARY KEY,check_id TEXT,kind TEXT,readiness_level TEXT,roll_no INTEGER,content_json TEXT,review_json TEXT,created_at TEXT);
+CREATE TABLE IF NOT EXISTS paper_checks(paper_id TEXT PRIMARY KEY,check_id TEXT);
 """
 def conn() -> sqlite3.Connection:
     c=sqlite3.connect(DB_PATH); c.row_factory=sqlite3.Row; return c
