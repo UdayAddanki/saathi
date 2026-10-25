@@ -30,6 +30,7 @@ main { max-width:1080px; margin:28px auto; } .hero { max-width:680px; margin-bot
 @media print { body { padding:0; background:white; } .topbar,.tabs,.hero,#plan-form,.progress,.actions { display:none !important; } .card { border:0; box-shadow:none; } }
 
 /* Classroom notebook theme: visual-only layer. */
+@font-face { font-family:'Baloo 2'; src:url('/fonts/Baloo2-Regular.woff2') format('woff2'); font-weight:400; font-style:normal; font-display:swap; }
 :root {
   --chalkboard: #2f5d50;
   --paper: #fffdf6;
@@ -48,7 +49,8 @@ main { max-width:1080px; margin:28px auto; } .hero { max-width:680px; margin-bot
 html { background: var(--paper); }
 body { min-height:100vh; color:var(--ink); background-color:var(--paper); background-image:linear-gradient(90deg, transparent 0 46px, rgba(211,73,67,.22) 47px, transparent 48px), repeating-linear-gradient(0deg, transparent 0 31px, var(--notebook-line) 32px); font-size:16px; }
 .topbar { max-width:none; margin:0 -18px; padding:18px max(18px, calc((100vw - 1080px)/2)); color:#fff; background-color:var(--chalkboard); border-bottom:7px solid var(--wood); position:relative; }
-.topbar h1 { color:#fff; font-family:ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif; letter-spacing:.02em; text-shadow:1px 2px rgba(255,255,255,.13); }
+.topbar h1,h1,h2,h3,h4,.objective,.analysis-metric strong { font-family:'Baloo 2',ui-rounded,"Arial Rounded MT Bold",system-ui,sans-serif; }
+.topbar h1 { color:#fff; letter-spacing:.02em; text-shadow:1px 2px rgba(255,255,255,.13); }
 .classroom-greeting { margin:0 0 0 12px; color:#fff4ce; font-size:.9rem; font-weight:650; }
 .star-burst { position:fixed; left:50%; top:24%; z-index:20; transform:translateX(-50%); padding:14px 20px; border-radius:999px; color:#4d3200; background:#ffd76e; box-shadow:0 6px 20px #4d320044; animation:star-pop 1.1s ease both; pointer-events:none; }
 @keyframes star-pop { 0% { opacity:0; transform:translateX(-50%) scale(.6) rotate(-8deg); } 25% { opacity:1; } 100% { opacity:0; transform:translateX(-50%) scale(1.1) rotate(4deg); } }

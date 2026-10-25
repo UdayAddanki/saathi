@@ -54,6 +54,10 @@ def main():
                 capture(page, "reduced-motion", 390, 844, reduced=True)
                 page.emulate_media(media="print")
                 capture(page, "lesson-plan-print", 1280, 800, media="print")
+                for label, options in (("grade3-ad", "A. 4　 B. 40　 C. 43　 D. 3"), ("grade1-abc", "A. ●●　 B. ●●●　 C. ●●●●")):
+                    page.emulate_media(media="print")
+                    page.set_content(f'<style>body{{font:28px sans-serif;padding:48px}} .q{{margin:42px 0}} .o{{display:inline-block;border:3px solid #111;padding:16px;margin:8px}}</style><h1>Saathi answer sheet</h1><p>Roll number: __________________</p><div class="q">Q1. Choose one:<br><span class="o">{options}</span></div><div class="q">Q2. Choose one:<br><span class="o">{options}</span></div>')
+                    page.screenshot(path=OUT / f"answer-sheet-{label}-print.png", full_page=True)
                 browser.close()
         finally:
             server.terminate()
