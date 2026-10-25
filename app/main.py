@@ -57,9 +57,43 @@ def require_teacher(request: Request):
 
 def owned_class(request: Request, class_id: str):
     teacher = require_teacher(request)
-    item = one('select * from classes where id=? and (teacher_id=? or teacher_id is null)', (class_id, teacher['id']))
+    item = one('select * from classes where id=? and teacher_id=?', (class_id, teacher['id']))
     if not item: raise HTTPException(404, 'Class not found')
     return item
+
+def owned_plan(request: Request, plan_id: str):
+    teacher = require_teacher(request)
+    item = one('select lp.* from lesson_plans lp join classes c on c.id=lp.class_id where lp.id=? and c.teacher_id=?', (plan_id, teacher['id']))
+    if not item: raise HTTPException(404, 'Plan not found')
+    return item
+
+def owned_check(request: Request, check_id: str):
+    teacher = require_teacher(request)
+    item = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id join classes c on c.id=lp.class_id where ch.id=? and c.teacher_id=?', (check_id, teacher['id']))
+    if not item: raise HTTPException(404, 'Check not found')
+    return item
+
+def owned_paper(request: Request, paper_id: str):
+    teacher = require_teacher(request)
+    item = one('select p.* from papers p join classes c on c.id=p.class_id where p.id=? and c.teacher_id=?', (paper_id, teacher['id']))
+    if not item: raise HTTPException(404, 'Paper not found')
+    return item
+
+def teacher_for_request(request: Request):
+    token = request.cookies.get('saathi_session')
+    if not token: raise HTTPException(401, 'Please log in to continue.')
+    teacher = one('select t.* from teachers t join sessions s on s.teacher_id=t.id where s.token_hash=? and s.expires_at>?', (token_hash(token), int(time.time())))
+    if not teacher: raise HTTPException(401, 'Please log in to continue.')
+    return teacher
+
+@app.middleware('http')
+async def protect_api(request: Request, call_next):
+    if request.url.path.startswith('/api/') and request.url.path not in {'/api/health', '/api/auth/signup', '/api/auth/login'}:
+        try: teacher_for_request(request)
+        except HTTPException as error:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({'detail': error.detail}, status_code=error.status_code)
+    return await call_next(request)
 
 @app.post('/api/auth/signup')
 def signup(payload: dict, response: Response):
@@ -71,7 +105,7 @@ def signup(payload: dict, response: Response):
     if INVITE_CODE and payload.get('invite_code') != INVITE_CODE: raise HTTPException(403, 'That invite code is not valid.')
     if one('select id from teachers where lower(username)=?', (username,)): raise HTTPException(409, 'That username is already in use.')
     if one('select id from teachers where lower(email)=?', (email,)): raise HTTPException(409, 'That email is already in use.')
-    hashed, salt = password_hash(password); teacher_id = str(uuid.uuid4()); db = conn(); db.execute('insert into teachers values(?,?,?,?,?,?,?,?,?)', (teacher_id, username, email, hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0)); token = new_session(db, teacher_id); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax', secure=bool(request_is_https(response)))
+    hashed, salt = password_hash(password); teacher_id = str(uuid.uuid4()); db = conn(); db.execute('insert into teachers(id,username,email,password_hash,password_salt,created_at,last_active,force_password_change) values(?,?,?,?,?,?,?,?)', (teacher_id, username, email, hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0)); token = new_session(db, teacher_id); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax', secure=bool(request_is_https(response)))
     return {'username': username}
 
 def request_is_https(_response):
@@ -110,33 +144,36 @@ def check_injection(run_id: str, topic: str, note: str | None) -> None:
 @app.get('/api/boards')
 def boards(request: Request): authorize(request); return json.loads((ROOT / "data/boards.json").read_text())
 @app.get('/api/classes')
-def classes(request: Request): authorize(request); return rows('select * from classes')
+def classes(request: Request):
+    teacher = authorize(request)
+    return rows('select * from classes where teacher_id=?', (teacher['id'],)) if teacher else rows('select * from classes')
 @app.get('/api/classes/{class_id}')
 def get_class(class_id: str, request: Request):
- authorize(request)
- x=one('select * from classes where id=?',(class_id,))
- if not x: raise HTTPException(404,'Class not found')
- return x
+ return owned_class(request, class_id)
 
 @app.get('/api/classes/{class_id}/context')
 def get_context(class_id: str, request: Request):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     return one('select * from class_contexts where class_id=?', (class_id,)) or {'class_id': class_id, 'learning_level_choice': 'Mixed levels', 'learning_level_text': '', 'current_situation': '', 'classroom_vision': '', 'unit_goal': ''}
 
 @app.get('/api/classes/{class_id}/roll')
 def get_roll(class_id: str, request: Request):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     return rows('select roll_no,first_name,readiness_level from students where class_id=? order by roll_no', (class_id,))
 
 @app.post('/api/classes/{class_id}/roll/upload')
 async def upload_roll(class_id: str, request: Request, file: UploadFile = File(...)):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     parsed = parse_roll_file(await file.read(2 * 1024 * 1024 + 1), file.filename or '')
     return {'rows': parsed, 'valid': all(item['valid'] for item in parsed)}
 
 @app.post('/api/classes/{class_id}/roll/upload-pdf')
 async def upload_roll_pdf(class_id: str, request: Request, file: UploadFile = File(...)):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     try:
         parsed = parse_roll_pdf(await file.read(10 * 1024 * 1024 + 1))
     except ValueError as error:
@@ -145,7 +182,7 @@ async def upload_roll_pdf(class_id: str, request: Request, file: UploadFile = Fi
 
 @app.post('/api/classes/{class_id}/roll/save')
 def save_roll(class_id: str, payload: list[dict], request: Request):
-    authorize(request)
+    owned_class(request, class_id)
     import datetime
     if not payload:
         raise HTTPException(422, 'Choose a file and press Preview, or type names into the three boxes.')
@@ -162,19 +199,21 @@ def save_roll(class_id: str, payload: list[dict], request: Request):
         if normalize_level(item.get('readiness_level')) is None:
             raise HTTPException(422, f'Unknown readiness level on roll {roll_no}. Use Low, Mid, or High.')
     db = conn(); db.execute('delete from students where class_id=?', (class_id,))
-    for index, item in enumerate(payload, 1):
-        db.execute('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)', (class_id, index, item.get('first_name'), normalize_level(item.get('readiness_level')), datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    for item in payload:
+        db.execute('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)', (class_id, item['roll_no'], item.get('first_name'), normalize_level(item.get('readiness_level')), datetime.datetime.now(datetime.timezone.utc).isoformat()))
     db.commit(); db.close(); return get_roll(class_id, request)
 
 @app.get('/api/classes/{class_id}/roll-template.csv')
 def roll_template(class_id: str, request: Request):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     from fastapi.responses import PlainTextResponse
     return PlainTextResponse('roll number,name,readiness level\n1,Example Low,Low\n2,Example Mid,Mid\n3,Example High,High\n', media_type='text/csv', headers={'Content-Disposition':'attachment; filename=saathi-roll-template.csv'})
 
 @app.put('/api/classes/{class_id}/context')
 def save_context(class_id: str, payload: dict, request: Request):
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     text = ' '.join(str(payload.get(key, '')) for key in ('learning_level_text', 'current_situation', 'classroom_vision', 'unit_goal'))
     if INJECTION_PATTERNS.search(text):
         raise HTTPException(400, 'That classroom context contains text Saathi cannot treat as classroom context.')
@@ -187,7 +226,8 @@ def save_context(class_id: str, payload: dict, request: Request):
 @app.post('/api/classes/{class_id}/chapter-document')
 async def upload_chapter_document(class_id: str, request: Request, file: UploadFile = File(...)):
     """Store an optional PDF locally for the current class; never expose its contents in HTML."""
-    authorize(request)
+    teacher = authorize(request)
+    if teacher: owned_class(request, class_id)
     if not one('select id from classes where id=?', (class_id,)):
         raise HTTPException(404, 'Class not found')
     filename = file.filename or 'chapter.pdf'
@@ -206,10 +246,12 @@ async def upload_chapter_document(class_id: str, request: Request, file: UploadF
 def create_class(req: ClassRequest, request: Request):
  authorize(request)
  import uuid,json
- cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes(id,name,board,grade,section,class_size,period_minutes,resources_json,teacher_id) values(?,?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources),None)); c.executemany('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',[(cid,i,None,'mid',None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
+ teacher = one('select id from teachers where id=(select teacher_id from sessions where token_hash=?)', (token_hash(request.cookies.get('saathi_session','')),))
+ cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes(id,name,board,grade,section,class_size,period_minutes,resources_json,teacher_id) values(?,?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources),teacher['id'] if teacher else None)); c.executemany('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',[(cid,i,None,'mid',None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
 @app.post('/api/plans')
 def plan(req: PlanRequest, request: Request):
  authorize(request)
+ owned_class(request, req.class_id) if one('select id from teachers limit 1') else None
  if not KEY_FOUND: raise HTTPException(503,'PORTKEY_API_KEY not found')
  if not budget_remaining(): raise HTTPException(429, 'Today’s lesson budget has been reached. Please try again tomorrow.')
  run_id = 'preflight-' + str(time.time_ns())
@@ -223,35 +265,28 @@ def plan(req: PlanRequest, request: Request):
  return generate_plan(req.class_id, req.subject, req.chapter_or_topic, req.teacher_note, chapter=req.chapter, topic=req.topic, lesson_type=req.lesson_type, classroom_context=context, differentiated=req.differentiated, differentiation_types=req.differentiation_types, use_last_groups=req.use_last_groups, day_number=day_number, total_days=total_days, project_idea=req.project_idea, project_scope=req.project_scope)
 @app.get('/api/plans/{plan_id}')
 def saved(plan_id: str, request: Request):
- authorize(request)
- x=one('select * from lesson_plans where id=?',(plan_id,))
- if not x: raise HTTPException(404,'Plan not found')
- return x
+ return owned_plan(request, plan_id)
 
 @app.get('/api/lessons/recent')
 def recent_lessons(request: Request, class_id: str | None = None):
-    authorize(request)
+    teacher = require_teacher(request)
+    if class_id is not None:
+        owned_class(request, class_id)
     sql = '''select lp.id, lp.chapter_or_topic, lp.topic, lp.lesson_type, lp.created_at, c.name as class_name, c.grade, ch.id as check_id, ch.check_type
                    from lesson_plans lp join classes c on c.id=lp.class_id join checks ch on ch.lesson_plan_id=lp.id
-                   where (? is null or lp.class_id=?) order by lp.created_at desc limit 10'''
-    return rows(sql, (class_id, class_id))
+                   where c.teacher_id=? and (? is null or lp.class_id=?) order by lp.created_at desc limit 10'''
+    return rows(sql, (teacher['id'], class_id, class_id))
 
 @app.get('/api/checks/{check_id}')
 def get_check(check_id: str, request: Request):
-    authorize(request)
-    check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
-    if not check:
-        raise HTTPException(404, 'Check not found')
+    check = owned_check(request, check_id)
     check['items'] = json.loads(check.pop('items_json'))
     check['students'] = rows('select roll_no, first_name, readiness_level from students where class_id=? order by roll_no', (check['class_id'],))
     return check
 
 @app.post('/api/checks/{check_id}/responses')
 def save_results(check_id: str, payload: ResultsRequest, request: Request):
-    authorize(request)
-    check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
-    if not check:
-        raise HTTPException(404, 'Check not found')
+    check = owned_check(request, check_id)
     students = {item['roll_no'] for item in rows('select roll_no from students where class_id=?', (check['class_id'],))}
     items = json.loads(check['items_json'])
     if payload.check_mode == 'class_count':
@@ -285,10 +320,7 @@ def save_results(check_id: str, payload: ResultsRequest, request: Request):
 
 @app.post('/api/papers/from-check/{check_id}')
 def paper_from_check(check_id: str, request: Request):
-    authorize(request)
-    check = one('select ch.*,lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
-    if not check:
-        raise HTTPException(404, 'Check not found')
+    check = owned_check(request, check_id)
     items = json.loads(check['items_json']); items = items if isinstance(items, list) else items.get('questions', items.get('tasks', []))
     paper_id = __import__('uuid').uuid4().hex
     db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,?)', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1, __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())); db.commit(); db.close()
@@ -296,12 +328,12 @@ def paper_from_check(check_id: str, request: Request):
 
 @app.post('/api/papers/{paper_id}/confirm')
 def confirm_paper(paper_id: str, payload: dict, request: Request):
-    authorize(request)
+    owned_paper(request, paper_id)
     db = conn(); db.execute('update papers set questions_json=?,confirmed=1 where id=?', (json.dumps(payload.get('questions', [])), paper_id)); db.commit(); db.close(); return {'paper_id': paper_id, 'confirmed': True}
 
 @app.post('/api/papers/{paper_id}/results/confirm')
 def confirm_results(paper_id: str, payload: list[dict], request: Request):
-    authorize(request)
+    owned_paper(request, paper_id)
     db = conn(); db.execute('delete from results where paper_id=?', (paper_id,))
     for item in payload:
         db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, item['roll_no'], item['question_number'], item.get('mark'), item.get('max_marks', 1), 1, int(item.get('edited', False))))
@@ -309,10 +341,7 @@ def confirm_results(paper_id: str, payload: list[dict], request: Request):
 
 @app.get('/api/papers/{paper_id}/progress')
 def paper_progress(paper_id: str, request: Request):
-    authorize(request)
-    paper = one('select * from papers where id=?', (paper_id,))
-    if not paper:
-        raise HTTPException(404, 'Paper not found')
+    paper = owned_paper(request, paper_id)
     questions = json.loads(paper['questions_json']); results = rows('select * from results where paper_id=? and confirmed_by_teacher=1', (paper_id,))
     students = rows('select roll_no,first_name,readiness_level from students where class_id=?', (paper['class_id'],))
     by_child = {}
@@ -339,17 +368,17 @@ def paper_progress(paper_id: str, request: Request):
 
 @app.get('/api/checks/{check_id}/insight')
 def insight(check_id: str, request: Request):
-    authorize(request)
+    owned_check(request, check_id)
     return analyze_results(check_id).model_dump()
 
 @app.post('/api/checks/{check_id}/next-steps')
 def next_steps(check_id: str, request: Request):
-    authorize(request)
+    owned_check(request, check_id)
     return generate_next_steps(check_id)
 
 @app.post('/api/checks/{check_id}/use-warmup')
 def use_warmup(check_id: str, request: Request):
-    authorize(request)
+    owned_check(request, check_id)
     check = one('select ch.*, lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
     insight_row = one('select insight_json from insights where check_id=?', (check_id,))
     if not check or not insight_row:
@@ -364,7 +393,7 @@ def use_warmup(check_id: str, request: Request):
 
 @app.get('/api/progress/{class_id}')
 def progress(class_id: str, request: Request):
-    authorize(request)
+    owned_class(request, class_id)
     history = rows('''select i.insight_json, i.created_at, ch.id as check_id, lp.chapter_or_topic
                       from insights i join checks ch on ch.id=i.check_id join lesson_plans lp on lp.id=ch.lesson_plan_id
                       where lp.class_id=? order by i.created_at''', (class_id,))
@@ -378,15 +407,15 @@ def progress(class_id: str, request: Request):
     return {'checks': checks, 'concepts': concepts}
 @app.get('/api/usage')
 def usage(request: Request):
-    authorize(request)
-    calls = rows('select * from llm_calls order by created_at desc')
+    teacher = require_teacher(request)
+    calls = rows('select * from llm_calls where teacher_id=? order by created_at desc', (teacher['id'],))
     runs = rows('''select r.*, c.name as class_name,
         coalesce(sum(l.input_tokens), 0) as input_tokens,
         coalesce(sum(l.cached_input_tokens), 0) as cached_input_tokens,
         coalesce(sum(l.output_tokens), 0) as output_tokens
         from runs r left join classes c on c.id=r.class_id
         left join llm_calls l on l.run_id=r.id
-        group by r.id order by r.created_at desc''')
+        where r.teacher_id=? group by r.id order by r.created_at desc''', (teacher['id'],))
     return {
         'totals': {
             'runs': len(runs),
@@ -396,7 +425,7 @@ def usage(request: Request):
             'cost_usd': sum(x['cost_usd'] for x in calls),
             'provider_cost_usd': sum(x['provider_cost_usd'] for x in calls),
         },
-        'per_agent': rows('select agent_name, sum(input_tokens) as input_tokens, sum(cached_input_tokens) as cached_input_tokens, sum(output_tokens) as output_tokens, sum(cost_usd) as cost_usd, sum(provider_cost_usd) as provider_cost_usd from llm_calls group by agent_name'),
+        'per_agent': rows('select agent_name, sum(input_tokens) as input_tokens, sum(cached_input_tokens) as cached_input_tokens, sum(output_tokens) as output_tokens, sum(cost_usd) as cost_usd, sum(provider_cost_usd) as provider_cost_usd from llm_calls where teacher_id=? group by agent_name', (teacher['id'],)),
         'recent_runs': runs,
     }
 app.mount('/', StaticFiles(directory=str(ROOT / "static"), html=True), name='static')

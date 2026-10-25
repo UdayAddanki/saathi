@@ -21,5 +21,5 @@ def token_hash(token: str) -> str:
 def new_session(db, teacher_id: str) -> str:
     token = secrets.token_urlsafe(32)
     now = int(time.time())
-    db.execute('insert into sessions values(?,?,?,?,datetime("now"))', (str(uuid.uuid4()), teacher_id, token_hash(token), now + 30 * 86400, now))
+    db.execute('insert into sessions(id,teacher_id,token_hash,expires_at,created_at) values(?,?,?,?,datetime("now"))', (str(uuid.uuid4()), teacher_id, token_hash(token), now + 30 * 86400))
     return token

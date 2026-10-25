@@ -35,6 +35,10 @@ def init_db() -> None:
     class_columns = {row[1] for row in c.execute("PRAGMA table_info(classes)")}
     if "teacher_id" not in class_columns:
         c.execute("ALTER TABLE classes ADD COLUMN teacher_id TEXT")
+    for table in ("runs", "llm_calls", "feedback", "uploads"):
+        columns = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
+        if columns and "teacher_id" not in columns:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN teacher_id TEXT")
     response_columns = {row[1] for row in c.execute("PRAGMA table_info(responses)")}
     if "check_mode" not in response_columns:
         c.execute("ALTER TABLE responses ADD COLUMN check_mode TEXT DEFAULT 'each_child'")
