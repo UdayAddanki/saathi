@@ -136,7 +136,11 @@ def logout(request: Request, response: Response):
 @app.get('/api/auth/me')
 def me(request: Request):
     teacher = require_teacher(request)
-    return {key: teacher[key] for key in ('id', 'username', 'email', 'display_name', 'school')}
+    return {key: teacher[key] for key in ('id', 'username', 'email', 'display_name', 'school', 'setup_complete')}
+
+@app.post('/api/auth/setup-complete')
+def setup_complete(request: Request):
+    teacher = require_teacher(request); db = conn(); db.execute('update teachers set setup_complete=1 where id=?', (teacher['id'],)); db.commit(); db.close(); return {'ok': True}
 
 @app.put('/api/auth/profile')
 def update_profile(payload: dict, request: Request):
@@ -592,6 +596,10 @@ def admin_pilot(request: Request):
         teacher['sheets_uploaded'] = one('select count(*) as count from sheet_files where teacher_id=?', (teacher['id'],))['count']
         teacher['cost_total'] = one('select coalesce(sum(cost_usd),0) as total from llm_calls where teacher_id=?', (teacher['id'],))['total']
     return {'teachers': teachers}
+
+@app.get('/admin/pilot/page')
+def admin_page():
+    return FileResponse(ROOT / 'static' / 'admin.html')
 
 @app.post('/admin/pilot/{teacher_id}/reset-password')
 def admin_reset_password(teacher_id: str, request: Request):

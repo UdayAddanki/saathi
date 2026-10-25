@@ -21,6 +21,11 @@ def require(response, step, expected=200):
     if response.status != expected:
         raise AssertionError(f'{step}: expected HTTP {expected}, got HTTP {response.status}: {body[:500]}')
     return response.json() if body else {}
+def require_text(response, step, expected=200):
+    body=response.text()
+    if response.status != expected: raise AssertionError(f'{step}: expected HTTP {expected}, got HTTP {response.status}: {body[:500]}')
+    if not body.strip(): raise AssertionError(f'{step}: expected non-empty response')
+    return body
 
 def signup(page, base, username, email):
     page.goto(base); page.locator('#show-signup').click()
@@ -94,13 +99,14 @@ def reset_step(page, base, log_path):
 def run(fake):
     port = free_port(); base = f'http://127.0.0.1:{port}'; records=[]; OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='saathi-accounts-') as temp:
-        db_path=Path(temp)/'saathi.db'; log_path=Path(temp)/'server.log'; log=log_path.open('w'); env=os.environ.copy(); env.update({'DEMO_MODE':'true','PORT':str(port),'APP_URL':base,'SAATHI_DB_PATH':str(db_path),'PYTHONUNBUFFERED':'1'}); server=subprocess.Popen([sys.executable,'run.py'],cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT)
+        db_path=Path(temp)/'saathi.db'; log_path=Path(temp)/'server.log'; log=log_path.open('w'); env=os.environ.copy(); env.update({'DEMO_MODE':'true','PORT':str(port),'APP_URL':base,'ADMIN_CODE':'check-admin','SAATHI_DB_PATH':str(db_path),'PYTHONUNBUFFERED':'1'}); server=subprocess.Popen([sys.executable,'run.py'],cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT)
         try:
             time.sleep(2)
             with sync_playwright() as pw:
                 browser=pw.chromium.launch(); ca=browser.new_context(); cb=browser.new_context(); pa=ca.new_page(); pb=cb.new_page()
-                signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.'))
+                signup(pa,base,'teacher-a-live','teacher-a-live@example.com'); signup(pb,base,'teacher-b-live','teacher-b-live@example.com'); records.append(result('signup',True,'Both teachers signed up through the UI.')); require(pa.request.post(base+'/api/auth/setup-complete'),'wizard skip'); records.append(result('wizard',True,'Setup wizard skip persisted.'))
                 classes={'a':create_class(pa,base,3,'TS_SCERT','A'),'b':create_class(pb,base,1,'NCERT','B')}; records.append(roll_step(pa,pb,base,classes)); plans=plans_step(pa,pb,base,classes,db_path,fake); records.append({k:v for k,v in plans.items() if k!='ids'}); ids=plans['ids']; records.append(ownership_step(pa,pb,base,classes,ids)); records.append(relogin(pa,base,classes['a'],ids['a'][0])); reset,reset_page=reset_step(pa,base,log_path); records.append(reset); pb.goto(base); pb.locator('#demo-login').click(); pb.wait_for_timeout(300); records.append(result('demo',True,'Demo login completed.'))
+                admin=require(pa.request.get(base+'/admin/pilot',headers={'X-Admin-Code':'check-admin'}),'admin page'); require_text(pa.request.get(base+'/admin/pilot.csv',headers={'X-Admin-Code':'check-admin'}),'admin csv'); records.append(result('admin',True,f'Admin listed {len(admin["teachers"])} teachers and CSV downloaded.'))
                 for page,name in ((pa,'account-menu'),(reset_page,'reset')): page.screenshot(path=OUT/f'accounts-{name}.png',full_page=True)
                 records.append(result('screenshots',True,'Auth screenshots saved.')); browser.close()
         except Exception as exc:

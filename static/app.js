@@ -27,6 +27,7 @@ async function getJson(url, options) {
   });
   const response = await fetch(url, options);
   const data = await response.json();
+  if (response.status === 401) { sessionStorage.setItem('saathi-plan-draft', JSON.stringify(Object.fromEntries(['current-situation','classroom-vision','unit-goal','chapter-input','topic-input','note-input'].map((id) => [id, $(id)?.value || ''])))); document.querySelector('#auth-screen')?.classList.remove('hidden'); showAuth('login'); const error = new Error('Please log in again'); error.sessionExpired = true; throw error; }
   if (!response.ok) throw new Error(data.detail || 'The request could not be completed.');
   return data;
 }
@@ -298,11 +299,12 @@ async function load() {
   state.demoMode = health.demo_mode;
   if (health.demo_mode) $('demo-login').classList.remove('hidden');
   if (!document.cookie.includes('saathi_session=')) { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); return; }
-  const me = await getJson('/api/auth/me'); $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || '';
+  const me = await getJson('/api/auth/me'); $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || ''; if (!me.setup_complete) showSetupWizard();
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
   state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
   await loadContext();
+  const draft = sessionStorage.getItem('saathi-plan-draft'); if (draft) { Object.entries(JSON.parse(draft)).forEach(([id,value]) => { if ($(id)) $(id).value=value; }); sessionStorage.removeItem('saathi-plan-draft'); }
 }
 
 async function loadContext() {
@@ -316,6 +318,7 @@ async function loadContext() {
 
 $('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); if (!$('check-view').classList.contains('hidden')) loadRoll().catch((error) => showRollMessage(error.message, 'error')); }); $('subject-select').addEventListener('change', refreshChapters);
 $('account-button').onclick = () => $('account-dialog').showModal();
+function showSetupWizard() { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); $('setup-wizard').classList.remove('hidden'); let step=0; const labels=['First, add your first class.','Next, upload or enter your class roll.','Finally, prepare your first Plan.']; $('setup-action').onclick=()=>{ if(step<2){step++; $('setup-step').textContent=labels[step];} else finishSetup(); }; $('setup-skip').onclick=finishSetup; function finishSetup(){fetch('/api/auth/setup-complete',{method:'POST'}); $('setup-wizard').classList.add('hidden'); $('app-main').classList.remove('hidden'); document.querySelector('.tabs').classList.remove('hidden');} }
 $('save-profile').onclick = async () => { const r = await fetch('/api/auth/profile', {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:$('account-name').value,school:$('account-school').value})}); $('account-message').textContent = r.ok ? 'Profile saved.' : 'Could not save profile.'; };
 $('change-password').onclick = async () => { const r = await fetch('/api/auth/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('current-password').value,new_password:$('new-password').value})}); $('account-message').textContent = r.ok ? 'Password changed.' : ((await r.json()).detail || 'Could not change password.'); };
 $('logout-button').onclick = async () => { await fetch('/api/auth/logout',{method:'POST'}); location.reload(); };
