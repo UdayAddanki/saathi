@@ -326,6 +326,7 @@ $('next-tab-button').addEventListener('click', () => { $('next-tab-content').cla
 $('resources-tab-button').addEventListener('click', () => { $('next-tab-content').classList.add('hidden'); $('resources-tab-content').classList.remove('hidden'); });
 $('generate-worksheets').addEventListener('click', () => { $('resource-content').textContent = 'Worksheet generation will run only after confirmed paper results and the Resource Builder is connected.'; });
 $('generate-meetings').addEventListener('click', () => { $('resource-content').textContent = 'Meeting-plan generation will run only after confirmed results and the Resource Builder is connected.'; });
+$('generate-leader-onepager').addEventListener('click', () => { $('resource-content').textContent = 'The school-leader one-pager will be generated from confirmed class results and the selected next steps.'; });
 
 // The roll editor deliberately uses textContent for names and imported values.
 async function loadRoll() {
