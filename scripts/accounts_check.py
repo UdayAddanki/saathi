@@ -38,6 +38,7 @@ def screenshot(page, name):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--fake-llm', action='store_true', help='Use the local test model instead of Portkey')
+    parser.add_argument('--skip-plan', action='store_true', help='Skip the two Plan calls and run the account checks only')
     args = parser.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
     results = []
