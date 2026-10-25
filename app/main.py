@@ -455,6 +455,9 @@ async def read_submissions(paper_id: str, request: Request):
     if not paper: raise HTTPException(404, 'Paper not found')
     questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []
     sheets = rows('select * from sheet_files where paper_id=? and roll_no is not null', (paper_id,))
+    total_sheets = one('select count(*) as count from sheet_files where paper_id=?', (paper_id,))['count']
+    if not sheets:
+        raise HTTPException(422, f'Assign a roll number to each of the {total_sheets} uploaded answer sheets before reading them.')
     for index, sheet in enumerate(sheets):
         if not budget_remaining(teacher['id']):
             return {'paper_id': paper_id, 'readings': readings, 'message': f'Daily limit reached. {index} of {len(sheets)} sheets read; the rest can be read tomorrow.'}
