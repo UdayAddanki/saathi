@@ -280,6 +280,9 @@ function collectClassCounts() {
 
 async function load() {
   const health = await getJson('/api/health');
+  state.demoMode = health.demo_mode;
+  if (health.demo_mode) $('demo-login').classList.remove('hidden');
+  if (!document.cookie.includes('saathi_session=')) { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); return; }
   if (health.access_required && !localStorage.getItem('saathi_access_code')) {
     const code = window.prompt('Enter the Saathi access code');
     if (code) localStorage.setItem('saathi_access_code', code);
@@ -300,6 +303,11 @@ async function loadContext() {
 }
 
 $('class-select').addEventListener('change', () => { refreshSubjects(); loadContext(); if (!$('check-view').classList.contains('hidden')) loadRoll().catch((error) => showRollMessage(error.message, 'error')); }); $('subject-select').addEventListener('change', refreshChapters);
+function showAuth(form) { $('login-form').classList.toggle('hidden', form !== 'login'); $('signup-form').classList.toggle('hidden', form !== 'signup'); }
+$('show-login').onclick = () => showAuth('login'); $('show-signup').onclick = () => showAuth('signup');
+$('demo-login').onclick = async () => { await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'demo',password:'saathi-demo'})}); location.reload(); };
+$('login-form').onsubmit = async (event) => { event.preventDefault(); try { const response = await fetch('/api/auth/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('login-username').value,password:$('login-password').value})}); if (!response.ok) throw new Error('Wrong username or password.'); location.reload(); } catch (error) { $('login-error').textContent = error.message; } };
+$('signup-form').onsubmit = async (event) => { event.preventDefault(); if ($('signup-password').value !== $('signup-confirm').value) { $('signup-error').textContent = 'Passwords do not match.'; return; } try { const response = await fetch('/api/auth/signup', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('signup-username').value,password:$('signup-password').value,email:$('signup-email').value,invite_code:$('signup-invite').value})}); if (!response.ok) throw new Error((await response.json()).detail || 'Could not create account.'); location.reload(); } catch (error) { $('signup-error').textContent = error.message; } };
 $('topic-input').addEventListener('input', (event) => $('topic-count').textContent = `${event.target.value.length} / 120`);
 $('note-input').addEventListener('input', (event) => $('note-count').textContent = `${event.target.value.length} / 500`);
 $('current-situation').addEventListener('input', (event) => $('situation-count').textContent = `${event.target.value.length} / 500`);

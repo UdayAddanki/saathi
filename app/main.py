@@ -5,11 +5,12 @@ import datetime
 import logging
 import re
 import time
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
-from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND
+from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD
 from .db import init_db, rows, one, conn
 from .models import PlanRequest, ClassRequest
 from .pipeline import generate_plan, generate_next_steps
@@ -19,6 +20,7 @@ from .models import ResultsRequest
 from .roll import parse_roll_file, normalize_level
 from .roll_pdf import parse_roll_pdf
 from .marking import mark_answer
+from .auth import password_hash, password_matches, token_hash, new_session
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -35,11 +37,55 @@ def health():
     return {'ok': True, 'key_found': KEY_FOUND, 'access_required': bool(ACCESS_CODE), 'demo_mode': DEMO_MODE, 'message': None if KEY_FOUND else 'PORTKEY_API_KEY not found'}
 
 def authorize(request):
+    session = request.cookies.get('saathi_session')
+    if session:
+        teacher = one('select t.* from teachers t join sessions s on s.teacher_id=t.id where s.token_hash=? and s.expires_at>?', (token_hash(session), int(time.time())))
+        if teacher:
+            return teacher
+    if one('select id from teachers limit 1'):
+        raise HTTPException(401, 'Please log in to continue.')
     if not ACCESS_CODE:
         return None
     if request.headers.get('X-Saathi-Access-Code') != ACCESS_CODE:
         raise HTTPException(401, 'Enter the Saathi access code to continue.')
     return None
+
+def require_teacher(request: Request):
+    teacher = authorize(request)
+    if teacher: return teacher
+    raise HTTPException(401, 'Please log in to continue.')
+
+def owned_class(request: Request, class_id: str):
+    teacher = require_teacher(request)
+    item = one('select * from classes where id=? and (teacher_id=? or teacher_id is null)', (class_id, teacher['id']))
+    if not item: raise HTTPException(404, 'Class not found')
+    return item
+
+@app.post('/api/auth/signup')
+def signup(payload: dict, response: Response):
+    import re, datetime
+    username = str(payload.get('username', '')).strip().lower(); email = str(payload.get('email', '')).strip().lower(); password = str(payload.get('password', ''))
+    if not re.fullmatch(r'[a-z0-9._-]{3,30}', username): raise HTTPException(422, 'Username must be 3–30 letters, numbers, dots, underscores, or hyphens.')
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email): raise HTTPException(422, 'Enter a valid email address.')
+    if len(password) < 8: raise HTTPException(422, 'Password must be at least 8 characters.')
+    if INVITE_CODE and payload.get('invite_code') != INVITE_CODE: raise HTTPException(403, 'That invite code is not valid.')
+    if one('select id from teachers where lower(username)=?', (username,)): raise HTTPException(409, 'That username is already in use.')
+    if one('select id from teachers where lower(email)=?', (email,)): raise HTTPException(409, 'That email is already in use.')
+    hashed, salt = password_hash(password); teacher_id = str(uuid.uuid4()); db = conn(); db.execute('insert into teachers values(?,?,?,?,?,?,?,?,?)', (teacher_id, username, email, hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0)); token = new_session(db, teacher_id); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax', secure=bool(request_is_https(response)))
+    return {'username': username}
+
+def request_is_https(_response):
+    return False
+
+@app.post('/api/auth/login')
+def login(payload: dict, response: Response):
+    teacher = one('select * from teachers where lower(username)=?', (str(payload.get('username', '')).strip().lower(),))
+    if not teacher or not password_matches(str(payload.get('password', '')), teacher['password_hash'], teacher['password_salt']): raise HTTPException(401, 'Wrong username or password.')
+    db = conn(); token = new_session(db, teacher['id']); db.execute('update teachers set last_active=datetime("now") where id=?', (teacher['id'],)); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'username': teacher['username']}
+
+@app.post('/api/auth/logout')
+def logout(request: Request, response: Response):
+    token = request.cookies.get('saathi_session'); db = conn(); db.execute('delete from sessions where token_hash=?', (token_hash(token),)) if token else None; db.commit(); db.close(); response.delete_cookie('saathi_session'); return {'ok': True}
 
 def enforce_rate_limit(request):
     key = request.headers.get('X-Saathi-Access-Code') or (request.client.host if request.client else 'unknown')
@@ -160,7 +206,7 @@ async def upload_chapter_document(class_id: str, request: Request, file: UploadF
 def create_class(req: ClassRequest, request: Request):
  authorize(request)
  import uuid,json
- cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes values(?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources))); c.executemany('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',[(cid,i,None,'mid',None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
+ cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes(id,name,board,grade,section,class_size,period_minutes,resources_json,teacher_id) values(?,?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources),None)); c.executemany('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',[(cid,i,None,'mid',None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
 @app.post('/api/plans')
 def plan(req: PlanRequest, request: Request):
  authorize(request)

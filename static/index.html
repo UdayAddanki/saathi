@@ -14,7 +14,8 @@
     <span id="key-status" class="status-dot" title="API key status"></span>
   </header>
 
-  <main>
+  <section id="auth-screen" class="auth-screen"><div class="auth-board"><p class="eyebrow">A friendly classroom notebook</p><h1>Saathi</h1><h2>Plan, check, and know what to do next.</h2><p>Small steps every day add up.</p><div class="auth-actions"><button id="show-login" class="primary">Log in</button><button id="show-signup" class="secondary">Create account</button><button id="demo-login" class="secondary hidden">Try the demo account</button></div></div><form id="login-form" class="auth-card hidden"><h2>Welcome back</h2><label>Username<input id="login-username" required></label><label>Password<input id="login-password" type="password" required></label><button class="primary">Log in</button><p id="login-error" class="error"></p></form><form id="signup-form" class="auth-card hidden"><h2>Create your account</h2><label>Username<input id="signup-username" required pattern="[A-Za-z0-9._-]{3,30}"></label><label>Password<input id="signup-password" type="password" minlength="8" required></label><label>Confirm password<input id="signup-confirm" type="password" required></label><label>Email <small>Used only for password reset</small><input id="signup-email" type="email" required></label><label id="invite-wrap" class="hidden">Invite code<input id="signup-invite"></label><label class="consent"><input id="signup-consent" type="checkbox" required> I’ll use roll numbers on children’s work. Names stay in Saathi.</label><button class="primary">Create account</button><p id="signup-error" class="error"></p></form></section>
+  <main id="app-main">
     <section id="plan-view" class="view">
       <div class="hero"><p class="eyebrow">Plan a useful lesson</p><h2>Prepare a lesson your class can use today.</h2><p>Saathi creates a practical plan and a short check for your children.</p></div>
       <form id="plan-form" class="card">
