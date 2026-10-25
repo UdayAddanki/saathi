@@ -1,0 +1,58 @@
+# Tokenomics
+
+Source: `llm_calls` and `runs` in `/Users/uday/Documents/AI Foundations/Saathi/saathi.db`. No records are fabricated.
+
+## plan
+
+{
+  "input_tokens": 14647.125,
+  "cached_input_tokens": 5635.125,
+  "output_tokens": 3333.5625,
+  "cost_usd": 0.00587727,
+  "provider_cost_usd": 0.00279804,
+  "runs": 16
+}
+## next_steps
+
+{
+  "input_tokens": 4476.53571429,
+  "cached_input_tokens": 1213.57142857,
+  "output_tokens": 1075.96428571,
+  "cost_usd": 0.00101598,
+  "provider_cost_usd": 0.00091651,
+  "runs": 28
+}
+## answer_sheet_reading
+
+{
+  "input_tokens": 8480.33333333,
+  "cached_input_tokens": 0.0,
+  "output_tokens": 484.66666667,
+  "cost_usd": 0.00109037,
+  "provider_cost_usd": 0.00109037,
+  "runs": 3
+}
+## worksheets
+
+{
+  "input_tokens": 1132.0,
+  "cached_input_tokens": 0.0,
+  "output_tokens": 273.0,
+  "cost_usd": 0.0002497,
+  "provider_cost_usd": 0.0002497,
+  "runs": 1
+}
+## meeting_plans
+
+{
+  "input_tokens": 1397.0,
+  "cached_input_tokens": 0.0,
+  "output_tokens": 1027.0,
+  "cost_usd": 0.0006532,
+  "provider_cost_usd": 0.0006532,
+  "runs": 1
+}
+
+## Scale assumptions
+
+Per-teacher monthly projections are not produced until a verified full-loop dataset exists; placeholders are intentional.
