@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS pending_warmups(class_id TEXT PRIMARY KEY,warmup TEXT
 CREATE TABLE IF NOT EXISTS teachers(id TEXT PRIMARY KEY,username TEXT UNIQUE COLLATE NOCASE,email TEXT UNIQUE COLLATE NOCASE,password_hash TEXT,password_salt TEXT,created_at TEXT,last_active TEXT,force_password_change INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,teacher_id TEXT,token_hash TEXT UNIQUE,expires_at TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS password_resets(id TEXT PRIMARY KEY,teacher_id TEXT,token_hash TEXT UNIQUE,expires_at TEXT,used INTEGER DEFAULT 0,created_at TEXT);
+CREATE TABLE IF NOT EXISTS feedback(id TEXT PRIMARY KEY,teacher_id TEXT,plan_id TEXT,check_id TEXT,grade INTEGER,board TEXT,rating INTEGER,teach_decision TEXT,usual_time TEXT,saathi_minutes REAL,comment TEXT,teacher_name TEXT,opened_plan_tab_at TEXT,prepare_clicked_at TEXT,plan_ready_at TEXT,first_print_or_feedback_at TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS check_corrections(paper_id TEXT PRIMARY KEY,count INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS resources(id TEXT PRIMARY KEY,check_id TEXT,kind TEXT,readiness_level TEXT,roll_no INTEGER,content_json TEXT,review_json TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS paper_checks(paper_id TEXT PRIMARY KEY,check_id TEXT);

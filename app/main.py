@@ -142,6 +142,16 @@ def me(request: Request):
 def setup_complete(request: Request):
     teacher = require_teacher(request); db = conn(); db.execute('update teachers set setup_complete=1 where id=?', (teacher['id'],)); db.commit(); db.close(); return {'ok': True}
 
+@app.post('/api/feedback')
+def save_feedback(payload: dict, request: Request):
+    teacher = require_teacher(request)
+    rating = payload.get('rating'); decision = payload.get('teach_decision'); usual = payload.get('usual_time')
+    if rating not in {1,2,3,4,5}: raise HTTPException(422, 'Rating must be between 1 and 5.')
+    if decision not in {'yes','with_changes','no'}: raise HTTPException(422, 'Choose whether you would teach from this plan.')
+    if usual not in {'under_15','15_30','30_60','over_60'}: raise HTTPException(422, 'Choose your usual planning time.')
+    if len(str(payload.get('comment',''))) > 500: raise HTTPException(422, 'Feedback must be 500 characters or fewer.')
+    db=conn(); db.execute('insert into feedback values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (uuid.uuid4().hex,teacher['id'],payload.get('plan_id'),payload.get('check_id'),payload.get('grade'),payload.get('board'),rating,decision,usual,payload.get('saathi_minutes'),payload.get('comment',''),payload.get('teacher_name',''),payload.get('opened_plan_tab_at'),payload.get('prepare_clicked_at'),payload.get('plan_ready_at'),payload.get('first_print_or_feedback_at'),datetime.datetime.now(datetime.timezone.utc).isoformat())); db.commit(); db.close(); return {'ok':True}
+
 @app.put('/api/auth/profile')
 def update_profile(payload: dict, request: Request):
     teacher = require_teacher(request)
@@ -595,6 +605,7 @@ def admin_pilot(request: Request):
         teacher['lessons'] = one('select count(*) as count from runs where teacher_id=? and kind="plan"', (teacher['id'],))['count']
         teacher['sheets_uploaded'] = one('select count(*) as count from sheet_files where teacher_id=?', (teacher['id'],))['count']
         teacher['cost_total'] = one('select coalesce(sum(cost_usd),0) as total from llm_calls where teacher_id=?', (teacher['id'],))['total']
+        teacher['feedback'] = rows('select rating,teach_decision,usual_time,saathi_minutes,comment,created_at from feedback where teacher_id=? order by created_at desc', (teacher['id'],))
     return {'teachers': teachers}
 
 @app.get('/admin/pilot/page')
