@@ -430,19 +430,26 @@ function buildSimpleCheckFlow() {
   if (existingCards[1]) existingCards[1].remove();
   const roll = document.querySelector('#check-view > .card');
   if (roll) { const heading = roll.querySelector('h2'); if (heading) heading.textContent = '① Class roll'; }
-  const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = 'application/pdf,.pdf'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
+  const rollInput = document.createElement('input'); rollInput.type = 'file'; rollInput.accept = '.pdf,.csv,.xlsx,.xlsm,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; rollInput.id = 'simple-roll-file'; roll.append(rollInput);
+  const rollSave = addText(roll, 'button', 'Save roll', 'primary'); rollSave.type = 'button';
   roll.querySelector('.roll-actions')?.remove(); roll.querySelectorAll('#roll-paste-low, #roll-paste-mid, #roll-paste-high, #save-roll')?.forEach((node) => node.remove());
   const rollStatus = addText(roll, 'p', 'No class roll uploaded.', 'upload-status'); rollInput.addEventListener('change', () => { rollStatus.textContent = rollInput.files[0] ? `Ready: ${rollInput.files[0].name}` : 'No class roll uploaded.'; });
   rollInput.addEventListener('change', async () => {
     if (!rollInput.files[0]) return;
     const form = new FormData(); form.append('file', rollInput.files[0]);
     try {
-      const parsed = await getJson(`/api/classes/${selectedClass().id}/roll/upload-pdf`, {method:'POST', body:form});
+      const endpoint = /\.pdf$/i.test(rollInput.files[0].name) ? 'upload-pdf' : 'upload';
+      const parsed = await getJson(`/api/classes/${selectedClass().id}/roll/${endpoint}`, {method:'POST', body:form});
       state.rollPreviewRows = parsed.rows; state.rollPreviewInvalid = false; showRollPreview(parsed.rows);
       const byLevel = Object.fromEntries(['low', 'mid', 'high'].map((level) => [level, parsed.rows.filter((row) => row.readiness_level === level).map((row) => row.first_name).join('\n')]));
       $('roll-paste-low').value = byLevel.low; $('roll-paste-mid').value = byLevel.mid; $('roll-paste-high').value = byLevel.high;
       rollStatus.textContent = 'Roll preview ready. Review the buckets, then save the roll.';
     } catch (error) { rollStatus.textContent = error.message; }
+  });
+  rollSave.addEventListener('click', async () => {
+    if (!state.rollPreviewRows || state.rollPreviewInvalid) { rollStatus.textContent = 'Preview a valid PDF, CSV, or Excel file first.'; return; }
+    try { const roll = state.rollPreviewRows.filter((row) => row.valid).map((row) => ({roll_no: Number(row.roll_no), first_name: row.first_name, readiness_level: row.readiness_level})); await getJson(`/api/classes/${selectedClass().id}/roll/save`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(roll)}); await loadRoll(); rollStatus.textContent = `Roll saved: ${roll.length} children.`; }
+    catch (error) { rollStatus.textContent = error.message; }
   });
   if (!roll) view.append(roll);
 
