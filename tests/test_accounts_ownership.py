@@ -21,7 +21,7 @@ def test_teacher_ownership_for_class_and_unknown_id():
 def concrete(path):
     return path.replace('{class_id}', 'unknown-class').replace('{plan_id}', 'unknown-plan').replace('{check_id}', 'unknown-check').replace('{paper_id}', 'unknown-paper')
 
-@pytest.mark.parametrize('route', [route for route in app.routes if getattr(route, 'path', '').startswith('/api/') and route.path not in {'/api/health', '/api/auth/signup', '/api/auth/login'}], ids=lambda r: f'{sorted(r.methods)[0]} {r.path}')
+@pytest.mark.parametrize('route', [route for route in app.routes if getattr(route, 'path', '').startswith('/api/') and route.path not in {'/api/health', '/api/auth/signup', '/api/auth/login', '/api/auth/forgot-password', '/api/auth/reset-password'}], ids=lambda r: f'{sorted(r.methods)[0]} {r.path}')
 def test_every_protected_api_route_requires_a_session(route):
     with TestClient(app) as client:
         method = sorted(route.methods)[0]

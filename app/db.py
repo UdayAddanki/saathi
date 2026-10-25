@@ -38,6 +38,10 @@ def init_db() -> None:
     class_columns = {row[1] for row in c.execute("PRAGMA table_info(classes)")}
     if "teacher_id" not in class_columns:
         c.execute("ALTER TABLE classes ADD COLUMN teacher_id TEXT")
+    teacher_columns = {row[1] for row in c.execute("PRAGMA table_info(teachers)")}
+    for name, definition in {"display_name": "TEXT DEFAULT ''", "school": "TEXT DEFAULT ''", "failed_logins": "INTEGER DEFAULT 0", "locked_until": "INTEGER DEFAULT 0"}.items():
+        if name not in teacher_columns:
+            c.execute(f"ALTER TABLE teachers ADD COLUMN {name} {definition}")
     for table in ("runs", "llm_calls", "feedback", "uploads"):
         columns = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
         if columns and "teacher_id" not in columns:

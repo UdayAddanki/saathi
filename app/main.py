@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
-from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD
+from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL
 from .db import init_db, rows, one, conn
 from typing import List
 from .models import PlanRequest, ClassRequest
@@ -93,7 +93,7 @@ def teacher_for_request(request: Request):
 
 @app.middleware('http')
 async def protect_api(request: Request, call_next):
-    if request.url.path.startswith('/api/') and request.url.path not in {'/api/health', '/api/auth/signup', '/api/auth/login'}:
+    if request.url.path.startswith('/api/') and request.url.path not in {'/api/health', '/api/auth/signup', '/api/auth/login', '/api/auth/forgot-password', '/api/auth/reset-password'}:
         try: teacher_for_request(request)
         except HTTPException as error:
             from fastapi.responses import JSONResponse
@@ -125,6 +125,43 @@ def login(payload: dict, response: Response):
 @app.post('/api/auth/logout')
 def logout(request: Request, response: Response):
     token = request.cookies.get('saathi_session'); db = conn(); db.execute('delete from sessions where token_hash=?', (token_hash(token),)) if token else None; db.commit(); db.close(); response.delete_cookie('saathi_session'); return {'ok': True}
+
+@app.get('/api/auth/me')
+def me(request: Request):
+    teacher = require_teacher(request)
+    return {key: teacher[key] for key in ('id', 'username', 'email', 'display_name', 'school')}
+
+@app.put('/api/auth/profile')
+def update_profile(payload: dict, request: Request):
+    teacher = require_teacher(request)
+    db = conn(); db.execute('update teachers set email=?,display_name=?,school=? where id=?', (payload.get('email', teacher['email']), payload.get('display_name', ''), payload.get('school', ''), teacher['id'])); db.commit(); db.close()
+    return me(request)
+
+@app.post('/api/auth/change-password')
+def change_password(payload: dict, request: Request, response: Response):
+    teacher = require_teacher(request)
+    if not password_matches(payload.get('current_password', ''), teacher['password_hash'], teacher['password_salt']): raise HTTPException(403, 'Current password is incorrect.')
+    if len(payload.get('new_password', '')) < 8: raise HTTPException(422, 'Password must be at least 8 characters.')
+    hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=? where id=?', (hashed, salt, teacher['id'])); db.execute('delete from sessions where teacher_id=?', (teacher['id'],)); token = new_session(db, teacher['id']); db.commit(); db.close(); response.set_cookie('saathi_session', token, httponly=True, samesite='lax'); return {'ok': True}
+
+@app.post('/api/auth/forgot-password')
+def forgot_password(payload: dict):
+    identity = str(payload.get('identity', '')).strip().lower(); teacher = one('select * from teachers where lower(username)=? or lower(email)=?', (identity, identity))
+    if teacher:
+        recent = rows('select id from password_resets where teacher_id=? and created_at>datetime("now","-1 hour")', (teacher['id'],))
+        if len(recent) >= 3: raise HTTPException(429, 'Please wait before requesting another reset link.')
+        import secrets
+        raw = secrets.token_urlsafe(32); db = conn(); db.execute('insert into password_resets values(?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, teacher['id'], token_hash(raw), int(time.time()) + 1800, 0)); db.commit(); db.close()
+        from .mailer import send_reset_email
+        send_reset_email(teacher['email'], f'{APP_URL}/reset?token={raw}')
+    return {'message': "If an account exists, we've emailed a reset link"}
+
+@app.post('/api/auth/reset-password')
+def reset_password(payload: dict):
+    reset = one('select * from password_resets where token_hash=? and used=0 and expires_at>?', (token_hash(payload.get('token', '')), int(time.time())))
+    if not reset: raise HTTPException(400, 'This reset link is invalid or has expired.')
+    if len(payload.get('new_password', '')) < 8: raise HTTPException(422, 'Password must be at least 8 characters.')
+    hashed, salt = password_hash(payload['new_password']); db = conn(); db.execute('update teachers set password_hash=?,password_salt=? where id=?', (hashed, salt, reset['teacher_id'])); db.execute('update password_resets set used=1 where id=?', (reset['id'],)); db.execute('delete from sessions where teacher_id=?', (reset['teacher_id'],)); db.commit(); db.close(); return {'ok': True}
 
 def enforce_rate_limit(request):
     key = request.headers.get('X-Saathi-Access-Code') or (request.client.host if request.client else 'unknown')
