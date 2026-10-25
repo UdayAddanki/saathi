@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="topbar">
+  <header class="topbar hidden">
     <div><p class="eyebrow">Teacher copilot</p><h1>Saathi</h1></div>
     <label class="class-picker">Class <select id="class-select"></select></label>
     <button id="add-class-button" class="secondary">Add class</button>
@@ -20,7 +20,7 @@
   <section id="reset-screen" class="auth-screen hidden"><form id="reset-form" class="auth-card"><h2>Reset your password</h2><label>New password<input id="reset-password" data-testid="reset-password" type="password" minlength="8" required></label><label>Confirm password<input id="reset-confirm" data-testid="reset-confirm" type="password" minlength="8" required></label><button class="primary" data-testid="reset-submit">Set new password</button><p id="reset-message" data-testid="reset-message" class="error"></p></form></section>
   <section id="forgot-screen" class="auth-screen hidden"><form id="forgot-form" class="auth-card"><h2>Forgot password?</h2><label>Username or email<input id="forgot-identity" data-testid="forgot-identity" required></label><button class="primary" data-testid="forgot-submit">Email reset link</button><p id="forgot-message" data-testid="forgot-message" class="error"></p><button id="forgot-back" type="button" class="secondary" data-testid="forgot-back">Back to log in</button></form></section>
   <section id="setup-wizard" class="auth-screen hidden"><div class="auth-card"><h2>Set up Saathi</h2><p id="setup-step">First, add your first class.</p><button id="setup-action" class="primary">Add your first class</button><button id="setup-skip" class="secondary">Skip</button></div></section>
-  <main id="app-main">
+  <main id="app-main" class="hidden">
     <section id="plan-view" class="view">
       <div class="hero"><p class="eyebrow">Plan a useful lesson</p><h2>Prepare a lesson your class can use today.</h2><p>Saathi creates a practical plan and a short check for your children.</p></div>
       <form id="plan-form" class="card">
@@ -44,7 +44,7 @@
     <section id="usage-view" class="view hidden"><div class="card"><h2>Usage</h2><div id="usage-summary"></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Class</th><th>Status</th><th>In</th><th>Cached</th><th>Out</th><th>Cost</th></tr></thead><tbody id="usage-rows"></tbody></table></div></div></section>
   </main>
 
-  <nav class="tabs" aria-label="Main navigation"><button data-view="plan-view" class="active">Plan</button><button data-view="check-view">Check</button><button data-view="next-view">Next steps</button><button data-view="usage-view">Usage</button></nav>
+  <nav class="tabs hidden" aria-label="Main navigation"><button data-view="plan-view" class="active">Plan</button><button data-view="check-view">Check</button><button data-view="next-view">Next steps</button><button data-view="usage-view">Usage</button></nav>
 
   <dialog id="class-dialog"><form id="class-form" method="dialog" class="card"><button type="button" id="close-dialog" class="close">×</button><h2>Add a class</h2><label>Board<select id="new-board"><option value="NCERT">NCERT / CBSE</option><option value="TS_SCERT">Telangana State (SCERT)</option></select></label><label>Grade<select id="new-grade"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></label><label>Section<input id="new-section" maxlength="3" required></label><label>Number of children<input id="new-size" type="number" min="1" max="100" value="30" required></label><label>Period length (minutes)<input id="new-period" type="number" min="10" max="120" value="40" required></label><fieldset><legend>Resources</legend><label><input type="checkbox" value="chalkboard" checked> Chalkboard</label><label><input type="checkbox" value="textbook" checked> Textbook</label><label><input type="checkbox" value="local objects"> Local objects</label></fieldset><button class="primary" type="submit">Create class</button></form></dialog>
   <script src="/app.js"></script>

@@ -306,9 +306,9 @@ async function load() {
   state.demoMode = health.demo_mode;
   if (health.demo_mode) $('demo-login').classList.remove('hidden');
   let me;
-  try { me = await getJson('/api/auth/me'); } catch (error) { $('app-main').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); showAuth('login'); return; }
-  $('app-main').classList.remove('hidden'); document.querySelector('.tabs').classList.remove('hidden');
-  $('account-button').textContent = me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || '';
+  try { me = await getJson('/api/auth/me'); } catch (error) { $('app-main').classList.add('hidden'); document.querySelector('.topbar').classList.add('hidden'); document.querySelector('.tabs').classList.add('hidden'); $('account-button').classList.add('hidden'); $('auth-screen').classList.remove('hidden'); showAuth('login'); return; }
+  $('auth-screen').classList.add('hidden'); $('app-main').classList.remove('hidden'); document.querySelector('.topbar').classList.remove('hidden'); document.querySelector('.tabs').classList.remove('hidden');
+  $('account-button').textContent = me.username.toLowerCase() === 'demo' ? 'demo account' : me.username; $('account-button').classList.remove('hidden'); $('account-email').textContent = me.email; $('account-name').value = me.display_name || ''; $('account-school').value = me.school || '';
   const [boards, classes] = await Promise.all([getJson('/api/boards'), getJson('/api/classes')]);
   state.boards = boards.boards; state.classes = classes; state.demoMode = health.demo_mode; const usageTab = document.querySelector('[data-view="usage-view"]'); if (usageTab) usageTab.classList.toggle('hidden', !state.demoMode); renderClasses();
   $('key-status').classList.toggle('ready', health.key_found); $('key-status').title = health.key_found ? 'Portkey key ready' : health.message;
