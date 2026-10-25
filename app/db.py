@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from .config import DB_PATH
+from .config import DB_PATH, ROOT
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS classes(id TEXT PRIMARY KEY,name TEXT,board TEXT,grade INTEGER,section TEXT,class_size INTEGER,period_minutes INTEGER,resources_json TEXT);
 CREATE TABLE IF NOT EXISTS class_contexts(class_id TEXT PRIMARY KEY,learning_level_choice TEXT,learning_level_text TEXT,unit_goal TEXT,updated_at TEXT,current_situation TEXT DEFAULT '',classroom_vision TEXT DEFAULT '');
@@ -47,7 +47,7 @@ def init_db() -> None:
     for name, definition in {"current_situation": "TEXT DEFAULT ''", "classroom_vision": "TEXT DEFAULT ''"}.items():
         if name not in context_columns:
             c.execute(f"ALTER TABLE class_contexts ADD COLUMN {name} {definition}")
-    demos = json.load(open(DB_PATH.parent / "data/demo_classes.json"))
+    demos = json.load(open(ROOT / "data/demo_classes.json"))
     for x in demos:
         if not c.execute('select 1 from classes where id=?',(x['id'],)).fetchone():
             c.execute('insert into classes values(?,?,?,?,?,?,?,?)',(x['id'],x['name'],x['board'],x['grade'],x['section'],x['class_size'],x['period_minutes'],json.dumps(x['resources'])))

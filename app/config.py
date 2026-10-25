@@ -15,7 +15,7 @@ KEY_FOUND = bool(PORTKEY_API_KEY)
 ACCESS_CODE = os.getenv("ACCESS_CODE", "").strip()
 DAILY_BUDGET_USD = float(os.getenv("DAILY_BUDGET_USD", "1.00"))
 DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true" and not os.getenv("RENDER")
-DB_PATH = ROOT / "saathi.db"
+DB_PATH = Path(os.getenv("SAATHI_DB_PATH", str(ROOT / "saathi.db")))
 
 
 def find_portkey_key(repo_root: Path = ROOT) -> str | None:

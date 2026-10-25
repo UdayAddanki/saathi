@@ -173,11 +173,12 @@ def saved(plan_id: str, request: Request):
  return x
 
 @app.get('/api/lessons/recent')
-def recent_lessons(request: Request):
+def recent_lessons(request: Request, class_id: str | None = None):
     authorize(request)
-    return rows('''select lp.id, lp.chapter_or_topic, lp.created_at, c.name as class_name, c.grade, ch.id as check_id, ch.check_type
+    sql = '''select lp.id, lp.chapter_or_topic, lp.topic, lp.lesson_type, lp.created_at, c.name as class_name, c.grade, ch.id as check_id, ch.check_type
                    from lesson_plans lp join classes c on c.id=lp.class_id join checks ch on ch.lesson_plan_id=lp.id
-                   order by lp.created_at desc limit 20''')
+                   where (? is null or lp.class_id=?) order by lp.created_at desc limit 10'''
+    return rows(sql, (class_id, class_id))
 
 @app.get('/api/checks/{check_id}')
 def get_check(check_id: str, request: Request):

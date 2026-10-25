@@ -167,9 +167,9 @@ async function loadUsage() {
 }
 
 async function loadLessons() {
-  const lessons = await getJson('/api/lessons/recent');
+  const lessons = await getJson(`/api/lessons/recent?class_id=${encodeURIComponent(selectedClass().id)}`);
   $('lesson-select').replaceChildren();
-  lessons.forEach((lesson) => $('lesson-select').add(new Option(`${lesson.class_name} · ${lesson.chapter_or_topic}`, lesson.check_id)));
+  lessons.forEach((lesson) => { const date = new Date(lesson.created_at); const stamp = date.toLocaleDateString(undefined, {weekday:'short', day:'numeric', month:'short'}) + ', ' + date.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'}); const topic = lesson.topic || lesson.chapter_or_topic; $('lesson-select').add(new Option(`${stamp} · ${lesson.lesson_type || 'lesson'} · ${topic}`, lesson.check_id)); });
   if (lessons.length) await loadCheck(lessons[0].check_id);
 }
 
@@ -328,14 +328,10 @@ async function loadRoll() {
   const columns = $('roll-columns'); columns.replaceChildren();
   for (const level of ['low', 'mid', 'high']) {
     const section = addText(columns, 'section', '', `roll-column roll-${level}`);
-    addText(section, 'h3', `${level[0].toUpperCase() + level.slice(1)} readiness`);
-    roll.filter((child) => child.readiness_level === level).forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name || 'Unnamed'}`));
+    const members = roll.filter((child) => child.readiness_level === level);
+    addText(section, 'h3', `${level[0].toUpperCase() + level.slice(1)} · ${members.length}`);
+    members.forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name || 'Unnamed'}`));
   }
-  let table = $('saved-roll-table');
-  if (!table) { table = document.createElement('table'); table.id = 'saved-roll-table'; $('roll-columns').after(table); }
-  table.replaceChildren();
-  const header = table.insertRow(); ['Roll number', 'Name', 'Readiness level'].forEach((label) => { const cell = document.createElement('th'); cell.textContent = label; header.append(cell); });
-  roll.forEach((child) => { const row = table.insertRow(); [child.roll_no, child.first_name || '', child.readiness_level].forEach((value) => { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }); });
 }
 function showRollMessage(message, kind = 'success') {
   let box = $('roll-message');
@@ -352,7 +348,21 @@ function showRollPreview(rows) {
     members.forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name}`));
   }
 }
-document.querySelector('[data-view="check-view"]').addEventListener('click', loadRoll);
+function labelCheckSteps() {
+  const cards = document.querySelectorAll('#check-view > .card');
+  if (cards[0]) { cards[0].querySelector('h2').textContent = '① Class roll'; }
+  if (cards[1]) {
+    cards[1].querySelector('h2').textContent = '④ Class progress / quick check';
+    if (!document.getElementById('check-step-guide')) {
+      const guide = document.createElement('div'); guide.id = 'check-step-guide'; guide.className = 'card check-step-guide';
+      guide.innerHTML = '<h2>② Question paper</h2><p>Use a Saathi lesson check here. Upload-and-confirm question papers and answer-sheet reading are not connected to this screen yet.</p><h2>③ Choose children and answer sheets</h2><p>The quick tap grid is available below. Selection, paper upload, answer-sheet upload, review, and confirmation still need to be wired into the Check flow.</p>';
+      cards[1].before(guide);
+    }
+  }
+  const quick = document.getElementById('check-editor');
+  if (quick && !document.getElementById('quick-entry-link')) { const link = document.createElement('p'); link.id = 'quick-entry-link'; link.textContent = 'No answer sheets? Enter results quickly'; quick.before(link); }
+}
+document.querySelector('[data-view="check-view"]').addEventListener('click', () => { labelCheckSteps(); loadRoll(); });
 $('download-roll').addEventListener('click', (event) => { event.preventDefault(); window.location.href = `/api/classes/${selectedClass().id}/roll-template.csv`; });
 $('upload-roll').addEventListener('click', async () => {
   const file = $('roll-file').files[0]; if (!file) return;
