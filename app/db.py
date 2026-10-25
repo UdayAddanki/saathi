@@ -78,7 +78,7 @@ def init_db() -> None:
         import datetime
         hashed, salt = password_hash(DEMO_PASSWORD)
         teacher_id = str(uuid.uuid4())
-        c.execute('insert into teachers values(?,?,?,?,?,?,?,?,?)', (teacher_id, 'demo', 'demo@saathi.local', hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0))
+        c.execute('insert into teachers(id,username,email,password_hash,password_salt,created_at,last_active,force_password_change) values(?,?,?,?,?,?,?,?)', (teacher_id, 'demo', 'demo@saathi.local', hashed, salt, datetime.datetime.now(datetime.timezone.utc).isoformat(), None, 0))
         c.execute('update classes set teacher_id=? where teacher_id is null', (teacher_id,))
     c.commit(); c.close()
 def rows(sql: str, args: tuple = ()) -> list[dict]:
