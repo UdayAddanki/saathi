@@ -74,7 +74,7 @@ def main() -> int:
                 # B gets a small typed roll through the same save route.
                 rows_b=[{'roll_no':i,'first_name':f'Child {i}','readiness_level':'mid'} for i in range(1,21)]; assert api(pb,'POST',f'/api/classes/{class_b}/roll/save',data=rows_b).ok
                 def plan(page, class_id, topic):
-                    response=api(page,'POST','/api/plans',data={'class_id':class_id,'subject':'Mathematics','chapter_or_topic':topic,'lesson_type':'5-step'}); assert response.ok, response.text; return response.json()
+                    response=api(page,'POST','/api/plans',data={'class_id':class_id,'subject':'Mathematics','chapter_or_topic':topic,'lesson_type':'5-step'}, timeout=120000); assert response.ok, response.text; return response.json()
                 lesson_a=plan(pa,class_a,'place value'); lesson_b=plan(pb,class_b,'numbers 1 to 20'); results.append(('plans','pass','Exactly one real Plan call per teacher completed.'))
                 check_a=lesson_a['check_id']; check_b=lesson_b['check_id']; plan_a=lesson_a['id']; plan_b=lesson_b['id']
                 for page, ids in ((pa,(class_a,plan_a,check_a)),(pb,(class_b,plan_b,check_b))):
