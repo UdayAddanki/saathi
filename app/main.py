@@ -459,7 +459,7 @@ async def read_submissions(paper_id: str, request: Request):
         if not budget_remaining(teacher['id']):
             return {'paper_id': paper_id, 'readings': readings, 'message': f'Daily limit reached. {index} of {len(sheets)} sheets read; the rest can be read tomorrow.'}
         started = time.perf_counter()
-        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), 'Transcribe every question option.'])
+        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), f'This sheet is assigned to roll number {sheet["roll_no"]}. Transcribe every question option and return that roll number in the structured output.'])
         usage = record(run_id, 'answer_sheet_reader', result.usage, started, teacher['id'])
         db = conn(); db.execute('delete from sheet_readings where paper_id=? and roll_no=?', (paper_id, sheet['roll_no']))
         for number, answer in result.output.answers.items():
