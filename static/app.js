@@ -1,6 +1,8 @@
 const state = { boards: [], classes: [], currentResult: null, rollPreviewInvalid: false, rollPreviewRows: null };
 state.check = null;
 const $ = (id) => document.getElementById(id);
+[['signup-username','signup-username'],['signup-password','signup-password'],['signup-confirm','signup-confirm'],['signup-email','signup-email'],['signup-consent','signup-consent'],['login-username','login-username'],['login-password','login-password'],['reset-password','reset-password'],['reset-confirm','reset-confirm'],['reset-message','reset-message']].forEach(([id, testid]) => { const node = $(id); if (node) node.dataset.testid = testid; });
+const resetSubmit = document.querySelector('#reset-form button'); if (resetSubmit) resetSubmit.dataset.testid = 'reset-submit';
 const isMcqCheck = (check) => check.check_type === 'mcq' || check.check_type === 'mcq_read_aloud';
 
 function addText(parent, tag, text, className = '') {

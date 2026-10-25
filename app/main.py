@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from .config import ACCESS_CODE, DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND, INVITE_CODE, DEMO_PASSWORD, APP_URL, ADMIN_CODE
 from .db import init_db, rows, one, conn
 from typing import List
@@ -37,6 +38,10 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Saathi", lifespan=lifespan)
 logger = logging.getLogger(__name__)
 REQUESTS: dict[str, list[float]] = {}
+
+@app.get('/reset')
+def reset_page():
+    return FileResponse(ROOT / 'static' / 'index.html')
 INJECTION_PATTERNS = re.compile(r"ignore\s+(all\s+)?previous\s+instructions|system\s+prompt|you\s+are\s+now|reveal\s+your\s+instructions|disregard\s+the", re.I)
 
 @app.get('/api/health')
