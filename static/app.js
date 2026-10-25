@@ -315,7 +315,15 @@ $('class-form').addEventListener('submit', async (event) => { event.preventDefau
 document.querySelectorAll('.tabs button').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('.tabs button').forEach((item) => item.classList.remove('active')); button.classList.add('active'); document.querySelectorAll('.view').forEach((view) => view.classList.add('hidden')); $(button.dataset.view).classList.remove('hidden'); if (button.dataset.view === 'usage-view') loadUsage(); }));
 load();
 $('lesson-select').addEventListener('change', (event) => loadCheck(event.target.value));
-$('save-results').addEventListener('click', async () => { if (!state.check) return; const payload = state.check.mode === 'class_count' ? {check_mode:'class_count', class_counts:collectClassCounts()} : {check_mode:'each_child', responses:collectResponses()}; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); alert('Results saved. Open Next steps to see the diagnosis.'); });
+async function renderQuickAnalysis() {
+  const insight = await getJson(`/api/checks/${state.check.id}/insight`);
+  const panel = $('check-step-analysis'); if (!panel) return;
+  panel.replaceChildren(); addText(panel, 'h2', '④ Class analysis'); addText(panel, 'p', 'Confirmed results from the selected lesson.');
+  const bars = addText(panel, 'div', '', 'analysis-metrics');
+  insight.concepts.forEach((concept) => { const metric = addText(bars, 'div', '', 'analysis-metric'); addText(metric, 'strong', concept.concept_id); addText(metric, 'span', `${concept.percent_correct}% · ${concept.status}`); });
+  const next = addText(panel, 'button', 'See what to do next →', 'primary'); next.onclick = () => document.querySelector('[data-view="next-view"]').click();
+}
+$('save-results').addEventListener('click', async () => { if (!state.check) return; const payload = state.check.mode === 'class_count' ? {check_mode:'class_count', class_counts:collectClassCounts()} : {check_mode:'each_child', responses:collectResponses()}; await getJson(`/api/checks/${state.check.id}/responses`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); await renderQuickAnalysis(); alert('Results confirmed. The analysis is ready.'); });
 $('sample-results').addEventListener('click', fillSampleResults);
 $('each-child-mode').addEventListener('click', () => { state.check.mode = 'each_child'; loadCheck(state.check.id); });
 $('class-count-mode').addEventListener('click', () => { state.check.mode = 'class_count'; renderClassCounts(); });
