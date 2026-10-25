@@ -283,6 +283,12 @@ def submission_review(paper_id: str, request: Request):
     if not paper: raise HTTPException(404, 'Paper not found')
     return {'paper_id': paper_id, 'files': rows('select id,roll_no,page_number,mime_type,path,size from sheet_files where paper_id=?', (paper_id,)), 'confirmed': False}
 
+@app.post('/api/papers/{paper_id}/assign-submission')
+def assign_submission(paper_id: str, payload: dict, request: Request):
+    authorize(request); roll_no = int(payload.get('roll_no', 0)); file_id = payload.get('file_id')
+    if roll_no <= 0 or not one('select id from sheet_files where id=? and paper_id=?', (file_id, paper_id)): raise HTTPException(422, 'Choose a valid child for this file.')
+    db = conn(); db.execute('update sheet_files set roll_no=? where id=? and paper_id=?', (roll_no, file_id, paper_id)); db.commit(); db.close(); return {'assigned': True}
+
 @app.post('/api/papers/{paper_id}/read-submissions')
 async def read_submissions(paper_id: str, request: Request):
     authorize(request); paper = one('select * from papers where id=?', (paper_id,))
@@ -327,7 +333,8 @@ def confirm_results(paper_id: str, payload: list[dict], request: Request):
     db = conn(); db.execute('delete from results where paper_id=?', (paper_id,))
     for item in payload:
         db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, item['roll_no'], item['question_number'], item.get('mark'), item.get('max_marks', 1), 1, int(item.get('edited', False))))
-    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload)}
+    corrections = sum(1 for item in payload if item.get('edited'))
+    db.execute('insert or replace into check_corrections(paper_id,count) values(?,?)', (paper_id, corrections)); db.commit(); db.close(); return {'confirmed': True, 'count': len(payload), 'corrections': corrections}
 
 @app.get('/api/papers/{paper_id}/progress')
 def paper_progress(paper_id: str, request: Request):
