@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from typing import List
 from fastapi.staticfiles import StaticFiles
 from .config import ACCESS_CODE, DAILY_BUDGET_USD, DEMO_MODE, KEY_FOUND
-from .db import init_db, rows, one, conn
+from .db import init_db, rows, one, conn, add_run
 from .models import PlanRequest, ClassRequest
 from .pipeline import generate_plan, generate_next_steps
 from .config import ROOT
@@ -294,8 +294,10 @@ async def read_submissions(paper_id: str, request: Request):
         usage = record(run_id, 'answer_sheet_reader', result.usage, started)
         db = conn(); db.execute('delete from sheet_readings where paper_id=? and roll_no=?', (paper_id, sheet['roll_no']))
         for number, answer in result.output.answers.items():
-            confidence = result.output.confidence.get(number, 'low'); unreadable = int(int(number) in result.output.unreadable)
-            db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, sheet['roll_no'], int(number), answer, confidence, unreadable, None))
+            clean_number = int(str(number).lstrip('Qq'))
+            confidence = result.output.confidence.get(number, result.output.confidence.get(str(clean_number), 'low'))
+            unreadable_numbers = {int(str(value).lstrip('Qq')) for value in result.output.unreadable}
+            db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, sheet['roll_no'], clean_number, answer, confidence, int(clean_number in unreadable_numbers), None))
         db.commit(); db.close(); readings.append({'roll_no': sheet['roll_no'], 'usage': usage})
     db = conn(); db.execute('update runs set status=? where id=?', ('complete', run_id)); db.commit(); db.close()
     return {'paper_id': paper_id, 'readings': readings}
@@ -306,9 +308,12 @@ def review_grid(paper_id: str, request: Request):
     if not paper: raise HTTPException(404, 'Paper not found')
     questions = json.loads(paper['questions_json']); output = []
     for reading in rows('select * from sheet_readings where paper_id=? order by roll_no,question_number', (paper_id,)):
-        question = questions[int(reading['question_number']) - 1]; answer = reading['transcribed_answer']; correct = question.get('correct_option')
+        question_number = int(reading['question_number'])
+        if question_number > len(questions):
+            continue
+        question = questions[question_number - 1]; answer = reading['transcribed_answer']; answer_option = str(answer or '').strip().upper()[:1]; correct = question.get('correct_option')
         if not correct: correct = question.get('correct_answer')
-        output.append({'roll_no': reading['roll_no'], 'question_number': reading['question_number'], 'answer': answer, 'confidence': reading['confidence'], 'unreadable': bool(reading['unreadable']), 'mark': None if reading['unreadable'] or not answer else (1 if str(answer).upper() == str(correct).upper() else 0)})
+        output.append({'roll_no': reading['roll_no'], 'question_number': question_number, 'answer': answer_option, 'raw_answer': answer, 'confidence': reading['confidence'], 'unreadable': bool(reading['unreadable']), 'mark': None if reading['unreadable'] or not answer else (1 if answer_option == str(correct).upper() else 0)})
     return {'paper_id': paper_id, 'questions': questions, 'cells': output}
 
 @app.post('/api/papers/{paper_id}/confirm')
