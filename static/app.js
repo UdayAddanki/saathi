@@ -321,3 +321,42 @@ $('each-child-mode').addEventListener('click', () => { state.check.mode = 'each_
 $('class-count-mode').addEventListener('click', () => { state.check.mode = 'class_count'; renderClassCounts(); });
 document.querySelector('[data-view="check-view"]').addEventListener('click', loadLessons);
 document.querySelector('[data-view="next-view"]').addEventListener('click', async () => { if (!state.check) return; const result = await getJson(`/api/checks/${state.check.id}/next-steps`, {method:'POST'}); const content = $('next-content'); content.replaceChildren(); addText(content, 'h3', 'Class insight'); result.insight.concepts.forEach((concept) => addText(content, 'p', `${concept.concept_id}: ${concept.percent_correct}% · ${concept.status}`)); addText(content, 'h3', 'Top errors'); result.insight.top_errors.slice(0, 3).forEach((error) => addText(content, 'p', `${error.count} children: ${error.description}${error.ai_suggested ? ' (AI-suggested)' : ''}`)); addText(content, 'h3', 'Coach summary'); addText(content, 'p', result.next_steps.summary); addText(content, 'h3', 'Next lesson warm-up'); addText(content, 'p', result.next_steps.next_lesson_warmup); const warmup = addText(content, 'button', 'Use in next lesson', 'primary'); warmup.onclick = async () => { await getJson(`/api/checks/${state.check.id}/use-warmup`, {method:'POST'}); warmup.textContent = 'Added to next lesson ✓'; warmup.disabled = true; }; const history = await getJson(`/api/progress/${selectedClass().id}`); const progress = $('progress-history'); progress.replaceChildren(); Object.entries(history.concepts).forEach(([concept, checks]) => { const row = addText(progress, 'p', `${concept}: `); checks.forEach((item) => addText(row, 'span', `${item.percent}%`, `progress-${item.status.replaceAll(' ', '-').toLowerCase()}`)); }); });
+
+// The roll editor deliberately uses textContent for names and imported values.
+async function loadRoll() {
+  const roll = await getJson(`/api/classes/${selectedClass().id}/roll`);
+  const columns = $('roll-columns'); columns.replaceChildren();
+  for (const level of ['low', 'mid', 'high']) {
+    const section = addText(columns, 'section', '', `roll-column roll-${level}`);
+    addText(section, 'h3', `${level[0].toUpperCase() + level.slice(1)} readiness`);
+    roll.filter((child) => child.readiness_level === level).forEach((child) => addText(section, 'p', `${child.roll_no}. ${child.first_name || 'Unnamed'}`));
+  }
+}
+document.querySelector('[data-view="check-view"]').addEventListener('click', loadRoll);
+$('download-roll').addEventListener('click', (event) => { event.preventDefault(); window.location.href = `/api/classes/${selectedClass().id}/roll-template.csv`; });
+$('upload-roll').addEventListener('click', async () => {
+  const file = $('roll-file').files[0]; if (!file) return;
+  const form = new FormData(); form.append('file', file);
+  const preview = await getJson(`/api/classes/${selectedClass().id}/roll/upload`, {method:'POST', body:form});
+  $('roll-paste-low').value = preview.filter((x) => x.readiness_level === 'low').map((x) => x.first_name).join('\n');
+  $('roll-paste-mid').value = preview.filter((x) => x.readiness_level === 'mid').map((x) => x.first_name).join('\n');
+  $('roll-paste-high').value = preview.filter((x) => x.readiness_level === 'high').map((x) => x.first_name).join('\n');
+  const review = $('roll-review') || document.createElement('div');
+  if (!review.id) {
+    review.id = 'roll-review';
+    review.className = 'roll-review';
+    const heading = document.createElement('h3'); heading.textContent = 'Review the suggested buckets'; review.append(heading);
+    const message = document.createElement('p'); message.textContent = 'Saathi has organised the uploaded names below. You can move names between buckets before saving the class roll.'; review.append(message);
+    [$('roll-paste-low'), $('roll-paste-mid'), $('roll-paste-high')].forEach((field) => review.append(field));
+    $('save-roll').parentElement.insertBefore(review, $('save-roll'));
+  }
+  review.classList.remove('hidden');
+  $('save-roll').textContent = 'Save these buckets';
+  if (preview.some((x) => !x.valid)) alert('Some rows need a name or readiness level before saving.');
+});
+$('save-roll').addEventListener('click', async () => {
+  const names = [['low', $('roll-paste-low').value], ['mid', $('roll-paste-mid').value], ['high', $('roll-paste-high').value]];
+  const roll = []; let number = 1;
+  names.forEach(([level, text]) => text.split('\n').map((name) => name.trim()).filter(Boolean).forEach((first_name) => roll.push({roll_no:number++, first_name, readiness_level:level})));
+  await getJson(`/api/classes/${selectedClass().id}/roll/save`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(roll)}); await loadRoll();
+});

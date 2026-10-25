@@ -192,3 +192,26 @@ class ResultsRequest(BaseModel):
     check_mode: Literal["each_child", "class_count"]
     responses: list[dict] = []
     class_counts: dict | None = None
+
+class PaperQuestion(BaseModel):
+    number: int
+    text: str
+    type: Literal["mcq", "fill_blank", "short_answer", "numeric", "match"]
+    options: dict[str, str] = {}
+    correct_answer: str | None = None
+    marks: float = 1
+    concept_id: str | None = None
+    ai_suggested: bool = False
+
+class Paper(BaseModel):
+    id: str
+    class_id: str
+    source: Literal["saathi_check", "upload"]
+    questions: list[PaperQuestion]
+    confirmed: bool = False
+
+class SheetReading(BaseModel):
+    roll_no: int
+    answers: dict[str, str | None]
+    confidence: dict[str, Literal["high", "medium", "low"]]
+    unreadable: list[int] = []

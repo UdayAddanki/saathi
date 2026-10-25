@@ -8,6 +8,12 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS classes(id TEXT PRIMARY KEY,name TEXT,board TEXT,grade INTEGER,section TEXT,class_size INTEGER,period_minutes INTEGER,resources_json TEXT);
 CREATE TABLE IF NOT EXISTS class_contexts(class_id TEXT PRIMARY KEY,learning_level_choice TEXT,learning_level_text TEXT,unit_goal TEXT,updated_at TEXT,current_situation TEXT DEFAULT '',classroom_vision TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS students(class_id TEXT,roll_no INTEGER,first_name TEXT);
+CREATE TABLE IF NOT EXISTS papers(id TEXT PRIMARY KEY,class_id TEXT,source TEXT,questions_json TEXT,confirmed INTEGER DEFAULT 0,created_at TEXT);
+CREATE TABLE IF NOT EXISTS paper_files(id TEXT PRIMARY KEY,paper_id TEXT,page_number INTEGER,mime_type TEXT,path TEXT,size INTEGER,created_at TEXT);
+CREATE TABLE IF NOT EXISTS sheet_files(id TEXT PRIMARY KEY,paper_id TEXT,roll_no INTEGER,page_number INTEGER,mime_type TEXT,path TEXT,size INTEGER,created_at TEXT);
+CREATE TABLE IF NOT EXISTS sheet_readings(paper_id TEXT,roll_no INTEGER,question_number INTEGER,transcribed_answer TEXT,confidence TEXT,unreadable INTEGER,ai_suggestion TEXT);
+CREATE TABLE IF NOT EXISTS results(paper_id TEXT,roll_no INTEGER,question_number INTEGER,mark REAL,max_marks REAL,confirmed_by_teacher INTEGER,edited INTEGER);
+CREATE TABLE IF NOT EXISTS check_selections(paper_id TEXT,roll_no INTEGER);
 CREATE TABLE IF NOT EXISTS lesson_plans(id TEXT PRIMARY KEY,class_id TEXT,board TEXT,grade INTEGER,subject TEXT,chapter_or_topic TEXT,mode TEXT,plan_json TEXT,created_at TEXT);
 CREATE TABLE IF NOT EXISTS checks(id TEXT PRIMARY KEY,lesson_plan_id TEXT,check_type TEXT,items_json TEXT);
 CREATE TABLE IF NOT EXISTS responses(check_id TEXT,roll_no INTEGER,item_index INTEGER,chosen_option TEXT,rating TEXT,error_id TEXT);
@@ -28,6 +34,11 @@ def init_db() -> None:
         c.execute("ALTER TABLE responses ADD COLUMN check_mode TEXT DEFAULT 'each_child'")
     if "class_counts_json" not in response_columns:
         c.execute("ALTER TABLE responses ADD COLUMN class_counts_json TEXT")
+    student_columns = {row[1] for row in c.execute("PRAGMA table_info(students)")}
+    if "readiness_level" not in student_columns:
+        c.execute("ALTER TABLE students ADD COLUMN readiness_level TEXT DEFAULT 'mid'")
+    if "updated_at" not in student_columns:
+        c.execute("ALTER TABLE students ADD COLUMN updated_at TEXT")
     plan_columns = {row[1] for row in c.execute("PRAGMA table_info(lesson_plans)")}
     for name, definition in {"lesson_type": "TEXT DEFAULT '5-step'", "chapter": "TEXT DEFAULT ''", "topic": "TEXT DEFAULT ''", "day_number": "INTEGER DEFAULT 1", "total_days": "INTEGER DEFAULT 1", "context_snapshot_json": "TEXT DEFAULT '{}'", "differentiated": "INTEGER DEFAULT 0", "differentiation_types_json": "TEXT DEFAULT '[]'"}.items():
         if name not in plan_columns:
@@ -40,7 +51,8 @@ def init_db() -> None:
     for x in demos:
         if not c.execute('select 1 from classes where id=?',(x['id'],)).fetchone():
             c.execute('insert into classes values(?,?,?,?,?,?,?,?)',(x['id'],x['name'],x['board'],x['grade'],x['section'],x['class_size'],x['period_minutes'],json.dumps(x['resources'])))
-            for i,n in enumerate(x['students'],1): c.execute('insert into students values(?,?,?)',(x['id'],i,n))
+            for i,n in enumerate(x['students'],1):
+                c.execute('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',(x['id'],i,n,'mid',None))
     c.commit(); c.close()
 def rows(sql: str, args: tuple = ()) -> list[dict]:
     c=conn(); out=[dict(r) for r in c.execute(sql,args)]; c.close(); return out

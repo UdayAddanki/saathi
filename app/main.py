@@ -16,6 +16,8 @@ from .pipeline import generate_plan, generate_next_steps
 from .config import ROOT
 from .diagnosis import analyze_results
 from .models import ResultsRequest
+from .roll import parse_roll_file, normalize_level
+from .marking import mark_answer
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -74,6 +76,36 @@ def get_context(class_id: str, request: Request):
     authorize(request)
     return one('select * from class_contexts where class_id=?', (class_id,)) or {'class_id': class_id, 'learning_level_choice': 'Mixed levels', 'learning_level_text': '', 'current_situation': '', 'classroom_vision': '', 'unit_goal': ''}
 
+@app.get('/api/classes/{class_id}/roll')
+def get_roll(class_id: str, request: Request):
+    authorize(request)
+    return rows('select roll_no,first_name,readiness_level from students where class_id=? order by roll_no', (class_id,))
+
+@app.post('/api/classes/{class_id}/roll/upload')
+async def upload_roll(class_id: str, request: Request, file: UploadFile = File(...)):
+    authorize(request)
+    parsed = parse_roll_file(await file.read(2 * 1024 * 1024 + 1), file.filename or '')
+    return {'rows': parsed, 'valid': all(item['valid'] for item in parsed)}
+
+@app.post('/api/classes/{class_id}/roll/save')
+def save_roll(class_id: str, payload: list[dict], request: Request):
+    authorize(request)
+    if any(normalize_level(item.get('readiness_level')) is None for item in payload):
+        raise HTTPException(422, 'Every child needs Low, Mid, or High readiness.')
+    import datetime
+    if not payload or any(not item.get('first_name') or normalize_level(item.get('readiness_level')) is None for item in payload):
+        raise HTTPException(422, 'Every child needs a name and Low, Mid, or High readiness level.')
+    db = conn(); db.execute('delete from students where class_id=?', (class_id,))
+    for index, item in enumerate(payload, 1):
+        db.execute('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)', (class_id, index, item.get('first_name'), normalize_level(item.get('readiness_level')), datetime.datetime.now(datetime.timezone.utc).isoformat()))
+    db.commit(); db.close(); return get_roll(class_id, request)
+
+@app.get('/api/classes/{class_id}/roll-template.csv')
+def roll_template(class_id: str, request: Request):
+    authorize(request)
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse('roll number,name,readiness level\n1,Example Low,Low\n2,Example Mid,Mid\n3,Example High,High\n', media_type='text/csv', headers={'Content-Disposition':'attachment; filename=saathi-roll-template.csv'})
+
 @app.put('/api/classes/{class_id}/context')
 def save_context(class_id: str, payload: dict, request: Request):
     authorize(request)
@@ -108,7 +140,7 @@ async def upload_chapter_document(class_id: str, request: Request, file: UploadF
 def create_class(req: ClassRequest, request: Request):
  authorize(request)
  import uuid,json
- cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes values(?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources))); c.executemany('insert into students values(?,?,?)',[(cid,i,None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
+ cid=str(uuid.uuid4()); c=conn(); c.execute('insert into classes values(?,?,?,?,?,?,?,?)',(cid,f'{req.grade}{req.section}',req.board,req.grade,req.section,req.class_size,req.period_minutes,json.dumps(req.resources))); c.executemany('insert into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)',[(cid,i,None,'mid',None) for i in range(1,req.class_size+1)]); c.commit(); c.close(); return {'id':cid}
 @app.post('/api/plans')
 def plan(req: PlanRequest, request: Request):
  authorize(request)
@@ -144,7 +176,7 @@ def get_check(check_id: str, request: Request):
     if not check:
         raise HTTPException(404, 'Check not found')
     check['items'] = json.loads(check.pop('items_json'))
-    check['students'] = rows('select roll_no, first_name from students where class_id=? order by roll_no', (check['class_id'],))
+    check['students'] = rows('select roll_no, first_name, readiness_level from students where class_id=? order by roll_no', (check['class_id'],))
     return check
 
 @app.post('/api/checks/{check_id}/responses')
@@ -183,6 +215,60 @@ def save_results(check_id: str, payload: ResultsRequest, request: Request):
             db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,rating,error_id,check_mode) values(?,?,?,?,?,?,?)', (check_id, response.get('roll_no'), response.get('item_index'), response.get('chosen_option'), response.get('rating'), response.get('error_id'), payload.check_mode))
     db.commit(); db.close()
     return analyze_results(check_id).model_dump()
+
+@app.post('/api/papers/from-check/{check_id}')
+def paper_from_check(check_id: str, request: Request):
+    authorize(request)
+    check = one('select ch.*,lp.class_id from checks ch join lesson_plans lp on lp.id=ch.lesson_plan_id where ch.id=?', (check_id,))
+    if not check:
+        raise HTTPException(404, 'Check not found')
+    items = json.loads(check['items_json']); items = items if isinstance(items, list) else items.get('questions', items.get('tasks', []))
+    paper_id = __import__('uuid').uuid4().hex
+    db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,?)', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1, __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())); db.commit(); db.close()
+    return {'id': paper_id, 'questions': items, 'confirmed': True}
+
+@app.post('/api/papers/{paper_id}/confirm')
+def confirm_paper(paper_id: str, payload: dict, request: Request):
+    authorize(request)
+    db = conn(); db.execute('update papers set questions_json=?,confirmed=1 where id=?', (json.dumps(payload.get('questions', [])), paper_id)); db.commit(); db.close(); return {'paper_id': paper_id, 'confirmed': True}
+
+@app.post('/api/papers/{paper_id}/results/confirm')
+def confirm_results(paper_id: str, payload: list[dict], request: Request):
+    authorize(request)
+    db = conn(); db.execute('delete from results where paper_id=?', (paper_id,))
+    for item in payload:
+        db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, item['roll_no'], item['question_number'], item.get('mark'), item.get('max_marks', 1), 1, int(item.get('edited', False))))
+    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload)}
+
+@app.get('/api/papers/{paper_id}/progress')
+def paper_progress(paper_id: str, request: Request):
+    authorize(request)
+    paper = one('select * from papers where id=?', (paper_id,))
+    if not paper:
+        raise HTTPException(404, 'Paper not found')
+    questions = json.loads(paper['questions_json']); results = rows('select * from results where paper_id=? and confirmed_by_teacher=1', (paper_id,))
+    students = rows('select roll_no,first_name,readiness_level from students where class_id=?', (paper['class_id'],))
+    by_child = {}
+    for result in results:
+        entry = by_child.setdefault(result['roll_no'], {'marks': 0, 'max': 0})
+        entry['marks'] += result['mark'] or 0; entry['max'] += result['max_marks'] or 0
+    child_data = []
+    for student in students:
+        entry = by_child.get(student['roll_no'])
+        if entry:
+            child_data.append({**student, 'mastery': round(100 * entry['marks'] / entry['max']) if entry['max'] else None})
+    levels = {}
+    for level in ('low', 'mid', 'high'):
+        values = [item['mastery'] for item in child_data if item['readiness_level'] == level and item['mastery'] is not None]
+        levels[level] = {'count': len(values), 'mastery': round(sum(values) / len(values)) if values else None}
+    average = [item['mastery'] for item in child_data if item['mastery'] is not None]
+    question_by_readiness = {}
+    for question_number in range(1, len(questions) + 1):
+        question_by_readiness[str(question_number)] = {}
+        for level in ('low', 'mid', 'high'):
+            selected = [r for r in results if r['question_number'] == question_number and next((s['readiness_level'] for s in students if s['roll_no'] == r['roll_no']), 'mid') == level]
+            question_by_readiness[str(question_number)][level] = round(100 * sum(float(r['mark'] or 0) for r in selected) / sum(float(r['max_marks'] or 1) for r in selected)) if selected else None
+    return {'paper_id': paper_id, 'class_size': len(students), 'checked': len(child_data), 'class_average': round(sum(average) / len(average)) if average else None, 'by_readiness': levels, 'children': child_data, 'questions': questions, 'question_by_readiness': question_by_readiness}
 
 @app.get('/api/checks/{check_id}/insight')
 def insight(check_id: str, request: Request):

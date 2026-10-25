@@ -6,3 +6,4 @@ __pycache__/
 saathi.db
 .pytest_cache/
 uploads/
+tests/fixtures/
