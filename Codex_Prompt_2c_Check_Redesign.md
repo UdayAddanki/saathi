@@ -118,3 +118,17 @@ Plain code: marking, mastery, sampling, level suggestions, diagnosis.
 3. Real end-to-end run: roll uploaded from an Excel sheet with readiness levels → paper uploaded and confirmed → 5 children selected → sheets uploaded and read → teacher review (correct at least one cell) → Confirm → class average, each child, question-wise, and by readiness level, all shown visually → Next steps → Use in next lesson.
 4. Commit, don't push; show `git status` first.
 5. Report back: whether images and PDFs worked with gpt-6-luna, tokens and cost per paper and per answer sheet, how accurate the transcription was on the test sheets (how many cells needed correcting), how the injection sheet was handled, and what's still missing.
+
+## Teacher-approved simplified Check flow
+
+The teacher-facing Check tab is intentionally simpler than the original four-step layout. Implement these three visible stages in order:
+
+1. **Class roll:** ask the teacher to upload one PDF class roll organised into three clearly labelled buckets: High readiness, Mid readiness, and Low readiness. Show the extracted children and buckets for teacher review before saving. Preserve roll numbers exactly when they are present; never send names to the model.
+2. **Submission organisation:** ask “How are your submissions organized?” and show two cards:
+   - **Each student is one file** — “Upload a file for each student. You can upload many at once.” Then show: “Drag and drop student files here, or click to browse. Upload one file per student. Supports PDF, image, Word, and PowerPoint. You can add more files to this same assignment later.”
+   - **All students in one file** — “Upload a single file containing all student submissions.” Then show an upload control and “Import from Google Drive”.
+3. **Class analysis:** after teacher confirmation, show class average mastery, student-wise mastery, and question-wise mastery. Results must remain unconfirmed until the teacher confirms them; code performs marking and mastery calculations.
+
+The old quick tap grid remains available behind the link **“No answer sheets? Enter results quickly”**. It is a fallback, not the main presentation.
+
+Do not show a separate “Class progress” card or tab under Next steps. Next steps should contain only diagnosis, coaching, and the “Use in next lesson” action.
