@@ -481,7 +481,7 @@ function buildSimpleCheckFlow() {
   }); view.append(submissions);
 
   const analysis = document.createElement('section'); analysis.id = 'check-step-analysis'; analysis.className = 'card check-flow-card';
-  addText(analysis, 'h2', '③ Class analysis'); addText(analysis, 'p', 'After the submissions are uploaded and confirmed, your results will appear here.');
+  addText(analysis, 'h2', '③ Class analysis'); addText(analysis, 'p', 'After the answer-sheet PDF is uploaded, results are read and analysed automatically.');
   const metrics = document.createElement('div'); metrics.className = 'analysis-metrics';
   [['Class average', '—'], ['Student-wise mastery', 'Upload submissions to calculate'], ['Question-wise mastery', 'Upload submissions to calculate']].forEach(([label, value]) => { const metric = document.createElement('div'); metric.className = 'analysis-metric'; addText(metric, 'strong', label); addText(metric, 'span', value); metrics.append(metric); });
   analysis.append(metrics); const next = addText(analysis, 'button', 'See what to do next →', 'primary'); next.type = 'button'; next.addEventListener('click', () => document.querySelector('[data-view="next-view"]').click()); view.append(analysis);
