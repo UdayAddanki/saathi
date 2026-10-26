@@ -422,6 +422,9 @@ async def upload_submissions(check_id: str, request: Request, files: List[Upload
         paper_id = uuid.uuid4().hex; db = conn(); db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,datetime("now"))', (paper_id, check['class_id'], 'saathi_check', json.dumps(items), 1)); db.commit(); db.close()
     else: paper_id = paper['id']
     db = conn(); db.execute('insert or replace into paper_checks values(?,?)', (paper_id, check_id)); db.commit(); db.close()
+    # This flow accepts one complete class document; a new upload replaces the
+    # previous import instead of accumulating duplicate pages.
+    db = conn(); db.execute('delete from sheet_readings where paper_id=?', (paper_id,)); db.execute('delete from results where paper_id=?', (paper_id,)); db.execute('delete from sheet_files where paper_id=?', (paper_id,)); db.commit(); db.close()
     students = {int(row['roll_no']): row for row in rows('select roll_no,first_name,readiness_level from students where class_id=?', (check['class_id'],))}
     directory = ROOT / 'uploads' / teacher['id']; directory.mkdir(parents=True, exist_ok=True); output = []
     for file in files:
