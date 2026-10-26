@@ -64,20 +64,9 @@ def main():
         body,elapsed=call(s,'POST',base,f'/api/checks/{check_id}/use-warmup'); records.append({'step':'use in next lesson','duration_s':elapsed,'detail':'warm-up saved'})
         calls,tools,runs=db_details(db_path,since); out={'source':'demo fixture trace; no real classroom data','records':records,'llm_calls':calls,'tool_calls':tools,'run_ids':runs,'diagnosis_experiment':{'status':'not run','reason':'Run separately only if the course model is available; no comparison is fabricated.'}}
         ev=ROOT/'evidence'; ev.mkdir(exist_ok=True)
-        # Screenshots are deliberately taken with Playwright, while all API
-        # mutations above use the real HTTP routes.  A screenshot is saved for
-        # every named step so the trace remains inspectable after the temp app
-        # is removed.
-        try:
-            from playwright.sync_api import sync_playwright
-            with sync_playwright() as pw:
-                browser=pw.chromium.launch(headless=True); page=browser.new_page(viewport={'width':1280,'height':800})
-                page.goto(base, wait_until='domcontentloaded')
-                for index, item in enumerate(records, 1):
-                    page.screenshot(path=str(ev / f'trace-{index:02d}-{item["step"].replace(" ","-")}.png'), full_page=True)
-                browser.close()
-        except Exception as error:
-            out.setdefault('warnings', []).append(f'Playwright screenshots unavailable: {type(error).__name__}: {error}')
+        # Screens with real data come from scripts/capture_real_screens.py, which
+        # drives the same loop in a logged-in browser. This script records the
+        # run itself (steps, model calls, tools, tokens, cost, timing).
         (ev/'run_trace.json').write_text(json.dumps(out,indent=2)+'\n')
         md=['# Full-loop trace','', 'Source: demo account and committed fixtures; no real classroom data.', '']
         for r in records: md.append(f"- **{r['step']}** — {r['detail']} ({r['duration_s']}s)")
