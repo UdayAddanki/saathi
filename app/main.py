@@ -575,9 +575,18 @@ async def generate_resources(check_id: str, kind: str, request: Request):
     if kind not in {'worksheets', 'meeting_plans'}: raise HTTPException(422, 'Unknown resource type.')
     insight = analyze_results(check_id); rolls = []
     if kind == 'meeting_plans':
-        students = rows('select roll_no from students where class_id=?', (check['class_id'],))
-        rolls = [item['roll_no'] for item in students[:5]]
-    run_id = add_run(check['class_id'], kind, teacher['id']); prompt = f'kind={kind}; check_id={check_id}; insight={insight.model_dump_json()}; roll_numbers={rolls}. Return resources only.'
+        paper = one('select p.id from papers p join paper_checks pc on pc.paper_id=p.id where pc.check_id=? order by p.created_at desc limit 1', (check_id,))
+        if paper:
+            student_scores = rows('''select s.roll_no, coalesce(sum(r.mark), 0) as marks,
+                                     coalesce(sum(r.max_marks), 0) as max_marks
+                                     from students s left join results r on r.roll_no=s.roll_no
+                                     and r.paper_id=? and r.confirmed_by_teacher=1
+                                     where s.class_id=? group by s.roll_no''', (paper['id'], check['class_id']))
+            scores = [(item['roll_no'], (100 * item['marks'] / item['max_marks']) if item['max_marks'] else 0) for item in student_scores]
+            class_average = sum(score for _, score in scores) / len(scores) if scores else 0
+            rolls = [roll for roll, score in sorted(scores, key=lambda item: item[1]) if score < class_average][:5]
+    duration = '30-minute parent–teacher meeting plan' if kind == 'meeting_plans' else kind
+    run_id = add_run(check['class_id'], kind, teacher['id']); prompt = f'kind={kind}; check_id={check_id}; insight={insight.model_dump_json()}; roll_numbers={rolls}; duration={duration}. Return resources only.'
     started = time.perf_counter(); result = await resource_builder.run(prompt); usage = record(run_id, 'resource_builder', result.usage, started, teacher['id'])
     content = result.output.model_dump(); db = conn(); db.execute('delete from resources where check_id=? and kind=?', (check_id, kind)); db.execute('insert into resources values(?,?,?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, check_id, kind, None, None, json.dumps(content), '{}',)); db.execute('update runs set status=?,total_cost_usd=? where id=?', ('complete', usage['cost_usd'], run_id)); db.commit(); db.close()
     return {'check_id': check_id, 'kind': kind, 'resources': content, 'usage': usage, 'roll_numbers': rolls}
