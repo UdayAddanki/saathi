@@ -1,37 +1,93 @@
 # Saathi
 
-Online link: _to be added_
+Saathi is an AI-supported classroom notebook for planning lessons, checking learning, and deciding what to do next.
 
-Saathi is an AI teacher copilot for Grades 1–5 in NCERT and Telangana primary classrooms.
+## What Saathi does
 
-## Run locally
+The Plan tab helps a teacher create a practical lesson and a five-question check. In Check, the teacher imports a class roll, chooses the lesson key, and uploads completed answer sheets. Saathi reads the sheets, while code matches roll numbers, marks answers, and calculates class, student, and question mastery. Next steps turns confirmed evidence into coaching, worksheets, parent–teacher meeting plans, and a school-leader one-pager. Children’s names stay in the app and are not sent to the model.
+
+![Saathi classroom notebook](evidence/design/accounts-account-menu.png)
+
+## Run it locally in under 10 minutes
 
 ```bash
+git clone <repository-url>
+cd Saathi
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-# put PORTKEY_API_KEY=... in this folder or its parent folder
+```
+
+Put `PORTKEY_API_KEY=...` in a `.env` file in this Saathi folder, or in the folder immediately above it. Then run:
+
+```bash
 python run.py
 ```
 
-Open http://localhost:8000. Run tests with `pytest`.
-
-### Accounts and administration
-
-With `DEMO_MODE=true`, the welcome page offers **Try the demo account**. Locally, teachers can create an account with a username, password and email. Online deployments can require an `INVITE_CODE`. Set `ADMIN_CODE` to protect `/admin/pilot`, which shows pilot usage and reset-log links. For emailed password resets, configure SMTP values; Gmail requires an app password rather than the normal account password.
-
-Only `gpt-6-luna` through Portkey is configured. The SQLite database is created automatically. Chapter lists are empty unless a chapter can be verified from an official textbook source; teachers can type any topic.
+Open <http://localhost:8000> and click **Try the demo account**. A blank or missing `DEMO_MODE` enables the local demo; set `DEMO_MODE=false` to hide it.
 
 ## Try it with sample data
 
-The roll-import fixtures are in `tests/fixtures/class_roll/`. Try either `class_roll_3A_valid.csv` or `class_roll_3A_valid.xlsx` for the 38-child class, then try the matching `class_roll_messy` files to see invalid rows highlighted for teacher review. Sample question-paper and answer-sheet fixtures will be added under `tests/fixtures/` when available.
+1. In Check step ①, upload `tests/fixtures/class_roll/class_roll_3A_valid.xlsx`.
+2. Plan a Grade 3 Telangana place-value lesson.
+3. In Check step ②, print the answer sheet.
+4. In Check step ③, upload the five sheets in `tests/fixtures/submissions/grade3/` (or use **Load sample submissions** in demo mode).
+5. The app reads and analyses the sheets automatically.
+6. Open Next steps and Additional resources to view coaching, worksheets, meeting plans, and the school-leader one-pager.
 
-## Deploy on Render
+The matching CSV roll fixture is `tests/fixtures/class_roll/class_roll_3A_valid.csv`; messy roll fixtures demonstrate flagged rows without guessing.
 
-1. Push this repository to GitHub, without `.env`, `saathi.db`, `.venv`, or caches.
-2. In Render, choose **New → Blueprint** and connect the GitHub repository.
-3. Render reads `render.yaml`, installs the requirements, and starts `python run.py`.
-4. In the service Environment settings, set `PORTKEY_API_KEY` to the Portkey key, choose a strong `ACCESS_CODE`, and leave `DAILY_BUDGET_USD` at `1.00` or choose a budget appropriate for the course.
-5. Set `APP_URL` to the complete public Render URL, for example `https://saathi-example.onrender.com`, so password-reset links point to the deployed app. If SMTP is configured, also set the SMTP variables.
-6. Deploy and open the generated `onrender.com` URL. Enter the access code once in the browser when prompted.
-7. Check `/api/health`, then create one small test lesson and inspect the Usage tab. SQLite is stored at the repository path, which works for a live demo; use persistent disk or an external database before production use because an ephemeral Render instance can lose local files on redeploy.
+## How it works
+
+| Agent | Purpose | Tools/data boundary |
+|---|---|---|
+| Planner | Writes the lesson | Class context and curriculum data |
+| Check Builder | Writes the five-question check | Grade and lesson plan |
+| Reviewer | Checks plans and checks | Code validation plus supplied draft |
+| Answer Sheet Reader | Transcribes visible answers | Attached paper only; never marks |
+| Next-Step Coach | Suggests next actions | Computed insight and roll numbers |
+| Resource Builder | Writes worksheets and meeting plans | Computed insight, roll numbers, misconceptions, class profile |
+
+Plain code owns authentication, roll matching, answer marking, mastery maths, budgets, ownership checks, confirmation, and names added back to teacher-facing resources.
+
+## Tests
+
+```bash
+pytest
+node --check static/app.js
+pip install -r requirements-dev.txt
+python -m playwright install chromium
+python scripts/accounts_check.py --skip-plan
+```
+
+The accounts check uses a temporary database. Its normal mode makes the two real Plan calls; `--skip-plan` uses fake lesson data.
+
+## Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `PORTKEY_API_KEY` | Portkey key for model calls; required for Plan and reading |
+| `DEMO_MODE` | Local one-click demo; blank/missing means true, `false` disables it |
+| `INVITE_CODE` | Optional sign-up invite code |
+| `ADMIN_CODE` | Protects `/admin/pilot` |
+| `TEACHER_DAILY_BUDGET_USD` | Per-teacher daily model budget |
+| `DAILY_BUDGET_USD` | Global daily model budget |
+| `DEMO_PASSWORD` | Demo account password |
+| `APP_URL` | Public base URL for reset links |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Optional password-reset email settings |
+
+See `.env.example` for the complete template.
+
+## Project structure
+
+```text
+app/          FastAPI routes, database, agents, marking
+static/       HTML, CSS, JavaScript, fonts, illustration
+data/         Curriculum and local reference data
+tests/        Automated tests and sample fixtures
+scripts/      Browser checks and evidence scripts
+evidence/     Screenshots and run evidence
+docs/         Design specifications and project documents
+```
+
+The `docs/` folder contains the design documents and AI coding prompts used to build Saathi.

@@ -30,7 +30,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 MAIL_FROM = os.getenv("MAIL_FROM", "")
 ADMIN_CODE = os.getenv("ADMIN_CODE", "").strip()
 DAILY_BUDGET_USD = float(os.getenv("DAILY_BUDGET_USD", "1.00"))
-DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true" and not os.getenv("RENDER")
+DEMO_MODE = os.getenv("DEMO_MODE", "").strip().lower() not in {"false", "0", "no", "off"} and not os.getenv("RENDER")
 DB_PATH = Path(os.getenv("SAATHI_DB_PATH", str(ROOT / "saathi.db")))
 
 
