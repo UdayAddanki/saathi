@@ -5,7 +5,7 @@ Wording: piloted with real data from three classrooms.
 ## Verified counts
 
 - Classrooms: 3
-- Children: 188
+- Children: 118
 - Sheets: 118
 - Answers Read: 590
 - Results: 590

@@ -13,7 +13,8 @@ def query(db, sql):
     return [dict(r) for r in db.execute(sql)]
 
 def tokenomics(db):
-    calls = query(db, "select l.*, r.kind run_kind from llm_calls l left join runs r on r.id=l.run_id")
+    pilot_ids = "(select id from teachers where username in ('anjalinair','janhavi','anurag'))"
+    calls = query(db, f"select l.*, r.kind run_kind from llm_calls l left join runs r on r.id=l.run_id where l.teacher_id in {pilot_ids}")
     groups = defaultdict(lambda: {"runs": set(), "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "provider_cost_usd": 0, "duration_ms": 0})
     agents = defaultdict(lambda: {"calls": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "cost_usd": 0, "duration_ms": 0})
     for row in calls:
@@ -40,12 +41,13 @@ def tokenomics(db):
     (EVIDENCE / "tokenomics.md").write_text("\n".join(lines) + "\n")
 
 def pilot(db):
-    feedback = query(db, "select rating, teach_decision, usual_time, saathi_minutes, opened_plan_tab_at, prepare_clicked_at, plan_ready_at, first_print_or_feedback_at, created_at from feedback order by created_at")
+    pilot_ids = "(select id from teachers where username in ('anjalinair','janhavi','anurag'))"
+    feedback = query(db, f"select rating, teach_decision, usual_time, saathi_minutes, opened_plan_tab_at, prepare_clicked_at, plan_ready_at, first_print_or_feedback_at, created_at from feedback where teacher_id in {pilot_ids} order by created_at")
     fields = ["feedback_id"] + list(feedback[0].keys()) if feedback else ["feedback_id"]
     with (EVIDENCE / "pilot_feedback.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields); writer.writeheader()
         for index, row in enumerate(feedback, 1): writer.writerow({"feedback_id": f"feedback-{index}", **row})
-    count_queries = {"classrooms": "select count(*) n from papers", "children": "select count(*) n from students", "sheets": "select count(*) n from sheet_files", "answers_read": "select count(*) n from sheet_readings", "results": "select count(*) n from results", "insights": "select count(*) n from insights", "feedback_entries": "select count(*) n from feedback"}
+    count_queries = {"classrooms": "select count(*) n from classes where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag'))", "children": "select count(*) n from students where class_id in (select id from classes where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag')))", "sheets": "select count(*) n from sheet_files where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag'))", "answers_read": "select count(*) n from sheet_readings where paper_id in (select id from papers where class_id in (select id from classes where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag'))))", "results": "select count(*) n from results where paper_id in (select id from papers where class_id in (select id from classes where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag'))))", "insights": "select count(*) n from insights where check_id in (select check_id from paper_checks where paper_id in (select id from papers where class_id in (select id from classes where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag')))))", "feedback_entries": "select count(*) n from feedback where teacher_id in (select id from teachers where username in ('anjalinair','janhavi','anurag'))"}
     counts = {key: query(db, sql)[0]["n"] for key, sql in count_queries.items()}
     lines = ["# Pilot summary", "", "Wording: piloted with real data from three classrooms.", "", "## Verified counts", ""]
     lines += [f"- {key.replace('_', ' ').title()}: {value}" for key, value in counts.items()]
