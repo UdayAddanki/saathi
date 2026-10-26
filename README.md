@@ -11,8 +11,8 @@ The Plan tab helps a teacher create a practical lesson and a five-question check
 ## Run it locally in under 10 minutes
 
 ```bash
-git clone <repository-url>
-cd Saathi
+git clone https://github.com/UdayAddanki/saathi.git
+cd saathi
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
