@@ -47,3 +47,21 @@ def test_class_count_and_prerequisite_flag():
     assert insight.concepts[0]['percent_correct'] == 20
     assert 'whole_class_reteach' in insight.recommended_actions
     assert insight.groups == {'ready': [], 'practice': [], 'reteach': []}
+
+def test_confirmed_paper_diagnosis_is_persisted():
+    db, check_id = make_check()
+    paper_id = str(uuid.uuid4())
+    db.execute('insert into papers(id,class_id,source,questions_json,confirmed,created_at) values(?,?,?,?,?,?)', (paper_id, '3A-TS', 'saathi_check', json.dumps(json.loads(db.execute('select items_json from checks where id=?', (check_id,)).fetchone()[0])), 1, 'now'))
+    db.execute('insert into paper_checks values(?,?)', (paper_id, check_id))
+    for roll in (1, 2):
+        for question in range(1, 6):
+            db.execute('insert into results values(?,?,?,?,?,?,?)', (paper_id, roll, question, 1 if roll == 1 else 0, 1, 1, 0))
+            db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,check_mode) values(?,?,?,?,?)', (check_id, roll, question - 1, 'A' if roll == 1 else 'B', 'each_child'))
+    for roll in (1, 2):
+        db.execute('insert or replace into students(class_id,roll_no,first_name,readiness_level,updated_at) values(?,?,?,?,?)', ('3A-TS', roll, f'Child{roll}', 'mid', None))
+    db.commit(); db.close()
+    insight = analyze_results(check_id)
+    saved = conn().execute('select insight_json from insights where check_id=?', (check_id,)).fetchone()
+    assert saved is not None
+    assert json.loads(saved[0])['check_id'] == check_id
+    assert insight.groups['ready']

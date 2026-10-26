@@ -25,6 +25,7 @@ def analyze_results(check_id: str) -> Insight:
     lesson = one("SELECT * FROM lesson_plans WHERE id=?", (check["lesson_plan_id"],))
     profile = one("SELECT * FROM classes WHERE id=?", (lesson["class_id"],))
     saved_items = json.loads(check["items_json"])
+    is_mcq = check["check_type"] in {"mcq", "mcq_read_aloud"}
     items = saved_items if isinstance(saved_items, list) else saved_items.get("questions", saved_items.get("tasks", saved_items))
     response_rows = [dict(row) for row in database.execute("SELECT * FROM responses WHERE check_id=?", (check_id,))]
     mode = response_rows[0].get("check_mode", "each_child") if response_rows else "each_child"
@@ -51,7 +52,7 @@ def analyze_results(check_id: str) -> Insight:
         item = items[index]
         concept_id = item.get("concept_id") or "open"
         stats = concept_stats[concept_id]
-        if check["check_type"] == "mcq":
+        if is_mcq:
             chosen = row.get("chosen_option")
             correct = chosen == item.get("correct_option")
             stats["assessed"] += 1
@@ -75,7 +76,7 @@ def analyze_results(check_id: str) -> Insight:
     concept_map = {concept["id"]: concept for concept in CONCEPTS}
     for concept_id, stats in concept_stats.items():
         denominator = stats["assessed"] or 1
-        percent = round(100 * (stats["correct"] if check["check_type"] == "mcq" else stats["got_it"]) / denominator)
+        percent = round(100 * (stats["correct"] if is_mcq else stats["got_it"]) / denominator)
         status = _status(percent)
         concepts.append({"concept_id": concept_id, "assessed": stats["assessed"], "percent_correct": percent, "got_it": stats["got_it"], "partly": stats["partly"], "not_yet": stats["not_yet"], "status": status})
         if status == "Needs re-teaching" and concept_id in concept_map and concept_map[concept_id]["prerequisite_ids"]:
@@ -95,7 +96,7 @@ def analyze_results(check_id: str) -> Insight:
     if mode == "each_child":
         for roll, scores in student_scores.items():
             correct_count = sum(scores)
-            if check["check_type"] == "mcq":
+            if is_mcq:
                 target = "ready" if correct_count >= 4 else "practice" if correct_count >= 2 else "reteach"
             else:
                 target = "ready" if all(scores) else "reteach" if scores.count(False) >= len(scores) / 2 else "practice"

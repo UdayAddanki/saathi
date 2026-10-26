@@ -526,7 +526,27 @@ def confirm_results(paper_id: str, payload: list[dict], request: Request):
         db.execute('delete from responses where check_id=?', (mapping[0],))
         for item in payload:
             db.execute('insert into responses(check_id,roll_no,item_index,chosen_option,check_mode) values(?,?,?,?,?)', (mapping[0], item['roll_no'], int(item['question_number']) - 1, item.get('answer'), 'each_child'))
-    db.commit(); db.close(); return {'confirmed': True, 'count': len(payload), 'corrections': corrections}
+    db.commit(); db.close()
+    insight_data = None
+    if mapping:
+        insight_data = analyze_results(mapping[0]).model_dump()
+    return {'confirmed': True, 'count': len(payload), 'corrections': corrections, 'insight': insight_data}
+
+@app.get('/api/classes/{class_id}/confirmed-checks')
+def confirmed_checks(class_id: str, request: Request):
+    owned_class(request, class_id)
+    confirmed = rows('''select distinct ch.id as check_id, lp.chapter_or_topic, lp.topic,
+                        lp.lesson_type, lp.created_at, p.id as paper_id
+                        from papers p join paper_checks pc on pc.paper_id=p.id
+                        join checks ch on ch.id=pc.check_id
+                        join lesson_plans lp on lp.id=ch.lesson_plan_id
+                        where p.class_id=? and exists
+                        (select 1 from results r where r.paper_id=p.id and r.confirmed_by_teacher=1)
+                        order by lp.created_at desc''', (class_id,))
+    for item in confirmed:
+        if not one('select check_id from insights where check_id=?', (item['check_id'],)):
+            analyze_results(item['check_id'])
+    return confirmed
 
 @app.get('/api/papers/{paper_id}/progress')
 def paper_progress(paper_id: str, request: Request):
