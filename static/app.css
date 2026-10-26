@@ -104,8 +104,23 @@ a { color:var(--sky); }
 
 @media (min-width:1101px) {
   .auth-screen { min-height:min(100vh,820px); }
-  .auth-shell { grid-template-columns:minmax(520px,1.15fr) minmax(430px,1.2fr) minmax(380px,.9fr); min-height:min(100vh,820px); }
-  .auth-panel { gap:0; padding:24px 18px; }
-  .auth-login-panel { width:330px; padding:32px; }
-  .auth-illustration img { width:125%; }
+  .auth-shell { grid-template-columns:minmax(500px,1.15fr) minmax(390px,1.1fr) minmax(360px,.9fr); min-height:min(100vh,780px); }
+  .auth-hero { padding:clamp(28px,4vh,48px) clamp(24px,5vw,76px); }
+  .auth-copy h1 { margin-bottom:12px; }
+  .auth-copy h2 { margin-bottom:12px; }
+  .auth-features { gap:10px; margin-top:22px; }
+  .auth-features article { min-height:82px; padding:12px; }
+  .auth-encouragement { margin-top:18px; }
+  .auth-panel { gap:0; padding:20px 14px; }
+  .auth-login-panel { width:320px; padding:26px; }
+  .auth-illustration img { width:115%; }
+}
+
+@media (min-width:1101px) and (max-height:820px) {
+  .auth-copy h1 { font-size:clamp(3.2rem,6vw,5rem); }
+  .auth-copy h2 { font-size:clamp(1.8rem,3vw,2.8rem); }
+  .auth-copy > p:last-child { font-size:1rem; }
+  .auth-features article { min-height:74px; }
+  .auth-features small { font-size:.82rem; }
+  .auth-login-panel { padding:22px; }
 }
