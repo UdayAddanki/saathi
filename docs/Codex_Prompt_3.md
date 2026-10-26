@@ -12,6 +12,25 @@ The deliverables (due on Canvas; we are aiming to finish **Sunday night**):
 
 ---
 
+## ⚠️ Updates since this file was written (these override anything below)
+
+The app changed a lot after this file was written. Describe and test **the app as it is now**:
+
+- **Accounts:** teachers sign up with a username, password, and email (email only for reset links), with an invite code online. The shared `ACCESS_CODE` is gone. Each teacher sees only their own data (ownership checked on every route; route-derived tests). Per-teacher and global daily budgets; `/admin/pilot` (ADMIN_CODE) for the coordinator. The demo account is for graders (`DEMO_MODE=true`). Live evidence: `evidence/accounts_check.md` from `scripts/accounts_check.py`.
+- **Plan:** classroom context (saved per class), subject, chapter, topic, optional chapter PDF, lesson types (5-step, 5E, project-based, experiential, 5 Magic Questions), optional differentiation (content / process / product), and a two-half plan: Lesson Vision plus a double-planned Lesson Method.
+- **Check:** ① class roll with Low / Mid / High readiness (Excel, CSV, or typed PDF; read by code, never sent to the model) → ② choose the lesson from Plan (its check is the answer key) plus a printable answer sheet (Grades 1–2: a 3-option read-aloud sheet; Grades 3–5: 4 options) → ③ upload answer sheets (one file per child, or all in one file) → the Answer Sheet Reader transcribes, code marks, and the teacher reviews and confirms → ④ visual class analysis by readiness level. **There is no quick grid or manual entry and no observation check any more.** "Load sample submissions" exists only in DEMO_MODE.
+- **Next steps:** the Coach (by Low / Mid / High) plus Additional resources (worksheets, parent–teacher meeting plans, a school-leader one-pager), generated only on request.
+- **Agents now:** Lesson Planner, Check Builder (MCQ and read-aloud), Reviewer, Answer Sheet Reader, Next-Step Coach, Resource Builder (plus the Paper Reader if it's still used anywhere; otherwise say it was dropped and why). Check `app/agents/` and `app/prompts/` for the real list, and describe only what exists.
+- **Plain code:** roll import, answer marking, mastery and readiness analysis, support-child selection, number and arithmetic checks, name insertion, budgets.
+- **Design:** the classroom-notebook theme, with screenshots already in `evidence/design/` from `scripts/screenshots.py`; extend that script rather than starting a new one.
+- **Real numbers already measured** (re-measure for the report; don't copy these blindly): a lesson takes about 19–25 s and costs about $0.003; reading one answer sheet costs about $0.00025 (about 1,960 input tokens) and takes about 2–3 s; the Coach plus Reviewer costs about $0.001.
+- **Part A feedback** must store `teacher_id` and use the existing account and ownership rules; the admin page shows feedback per teacher.
+- **Part B safety demos:** replace the access-code demo with: no session → 401; another teacher's data → 404; the lockout after 5 failed logins; the per-teacher budget; the reset-link safety; injection in typed teacher text **and** inside an uploaded answer sheet (the fixture with the injection line); the Coach number check; the code marking versus the teacher's corrections.
+- **Also add to the live check:** the admin temporary-password reset (temporary password → forced change → log-in with the new one), as a readable step that really checks it.
+- **The report's "Agents" section** must trace one real full loop step by step with screenshots: Plan → print sheet → upload sheets → review → Confirm → analysis → Next steps → a worksheet → Use in next lesson.
+
+---
+
 ## Part A — In-app teacher feedback (do this first; teachers use the app tonight)
 
 The strongest evidence is a real teacher using it, so make the app collect that evidence itself.

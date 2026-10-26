@@ -30,12 +30,21 @@ def require_text(response, step, expected=200):
 def signup(page, base, username, email):
     page.goto(base); page.locator('#show-signup').click()
     for selector, value in [('#signup-username', username), ('#signup-password', 'Strong-password-123'), ('#signup-confirm', 'Strong-password-123'), ('#signup-email', email)]: page.locator(selector).fill(value)
-    page.locator('#signup-consent').check(); page.locator('#signup-form button').click(); page.wait_for_timeout(400)
-    if page.locator('#class-select').count() != 1: raise AssertionError(f'{username}: signup did not enter the app at {page.url}')
+    page.locator('#signup-consent').check(); page.locator('[data-testid="signup-submit"]').click(); page.wait_for_timeout(600)
+    if page.request.get(base + '/api/auth/me').status != 200: raise AssertionError(f'{username}: signup did not create a session; URL={page.url}')
 
 def auth_validation_steps(page, base):
-    page.request.post(base + '/api/auth/logout'); page.goto(base); page.locator('#show-signup').click(); page.locator('#signup-form').evaluate("form => form.noValidate=true"); page.locator('#signup-username').fill('teacher-a-live'); page.locator('#signup-username').evaluate("node => node.removeAttribute('pattern')"); page.locator('#signup-password').fill('Strong-password-123'); page.locator('#signup-confirm').fill('Strong-password-123'); page.locator('#signup-email').fill('duplicate@example.com'); page.locator('#signup-consent').check(); page.locator('#signup-form button').click(); page.wait_for_timeout(500)
-    duplicate_message=page.locator('#signup-error').text_content(); print(f'[INFO] duplicate signup message: {duplicate_message!r}', flush=True)
+    page.request.post(base + '/api/auth/logout'); page.goto(base); page.wait_for_timeout(800); page.locator('#show-signup').click(); page.locator('#signup-form').evaluate("form => form.noValidate=true"); page.locator('#signup-username').fill('teacher-a-live'); page.locator('#signup-username').evaluate("node => node.removeAttribute('pattern')"); page.locator('#signup-password').fill('Strong-password-123'); page.locator('#signup-confirm').fill('Strong-password-123'); page.locator('#signup-email').fill('duplicate@example.com'); page.locator('#signup-consent').check()
+    button=page.locator('[data-testid="signup-submit"]'); print(f'[INFO] signup buttons in form: {page.locator("#signup-form button").count()}, clicked tag={button.evaluate("node => node.tagName")} type={button.get_attribute("type")}', flush=True)
+    try:
+        with page.expect_response('**/api/auth/signup', timeout=5000) as info:
+            button.click()
+    except Exception:
+        print(f'[INFO] no signup request; validity={page.locator("#signup-form").evaluate("form => form.checkValidity()")}; username={page.locator("#signup-username").input_value()!r}; consent={page.locator("#signup-consent").is_checked()}; message={page.locator("#signup-error").text_content()!r}; classes={page.locator("#signup-error").get_attribute("class")!r}', flush=True)
+        raise
+    response=info.value; print(f'[INFO] duplicate signup HTTP {response.status}: {response.text()}', flush=True); page.expect_response
+    page.locator('#signup-error').wait_for(state='visible', timeout=5000)
+    duplicate_message=page.locator('#signup-error').text_content(); print(f'[INFO] duplicate signup message: {duplicate_message!r}; classes={page.locator("#signup-error").get_attribute("class")}', flush=True)
     if 'taken' not in duplicate_message.lower(): raise AssertionError(f'duplicate username message was not shown: {duplicate_message!r}')
     page.locator('#show-login').click(); page.locator('[data-testid="forgot-link"]').click(); page.locator('[data-testid="forgot-identity"]').fill('teacher-a-live@example.com'); page.locator('[data-testid="forgot-submit"]').click(); page.wait_for_timeout(300)
     if 'If an account exists' not in page.locator('[data-testid="forgot-message"]').text_content(): raise AssertionError('forgot-password confirmation was not shown')
