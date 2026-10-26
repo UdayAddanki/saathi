@@ -230,7 +230,7 @@ async function loadCheck(checkId) {
       if (state.check.check_type === 'observation') addErrorPicker(row, button, item);
     });
   });
-  $('sample-results').classList.toggle('hidden', !state.demoMode);
+  if ($('sample-results')) $('sample-results').classList.toggle('hidden', !state.demoMode);
 }
 
 function addErrorPicker(row, button, item) {
