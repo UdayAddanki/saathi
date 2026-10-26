@@ -75,3 +75,28 @@ a { color:var(--sky); }
 @media (max-width:700px) { .classroom-greeting { width:100%; margin:0; order:4; } }
 @media print { body { background:#fff !important; background-image:none !important; color:#000; } body::before,.card::before,.tabs,.topbar { display:none !important; } button { box-shadow:none; } }
 @media (max-width:700px) { body { background-image:linear-gradient(90deg, transparent 0 20px, rgba(211,73,67,.18) 21px, transparent 22px), repeating-linear-gradient(0deg, transparent 0 31px, var(--notebook-line) 32px); } .topbar { margin:0 -18px; padding:14px 18px; } .card::before { right:14px; width:55px; } .tabs { gap:0; } .tabs button { min-width:0; flex:1; padding:10px 4px; font-size:.82rem; } }
+
+/* Approved classroom-login layout. Authentication markup and IDs remain unchanged. */
+.auth-screen { min-height:100vh; padding:0; background:#f8f4e8; color:#203235; }
+.auth-shell { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(260px,.75fr) minmax(340px,.9fr); min-height:100vh; overflow:hidden; background:#2d6253; }
+.auth-hero { padding:clamp(36px,6vw,92px) clamp(24px,6vw,110px); color:#fffdf4; background:#2d6253; z-index:1; }
+.auth-copy { max-width:600px; }
+.auth-copy .eyebrow { color:#f5b63c; font-size:.9rem; }
+.auth-copy h1 { color:#fffdf4; font-size:clamp(3.6rem,7vw,6.5rem); line-height:.95; margin:0 0 22px; }
+.auth-copy h2 { color:#fffdf4; font-size:clamp(2rem,3.4vw,3.6rem); line-height:1.05; margin-bottom:20px; }
+.auth-copy > p:last-child { max-width:520px; font-size:1.15rem; }
+.auth-encouragement { margin-top:32px; color:#fffdf4; font-size:1.15rem; font-style:italic; }
+.auth-features { display:grid; grid-template-columns:repeat(2,minmax(170px,1fr)); gap:14px; max-width:610px; margin-top:36px; }
+.auth-features article { display:flex; gap:12px; align-items:center; min-height:104px; padding:16px; border-radius:16px; color:#203235; background:#fff8df; }
+.auth-features article:nth-child(2) { background:#e1eee5; } .auth-features article:nth-child(3) { background:#e4edf8; } .auth-features article:nth-child(4) { background:#f8e4ed; }
+.auth-features span { display:grid; place-items:center; width:42px; height:42px; flex:none; border-radius:50%; color:#2d6253; background:#fff; font-size:1.8rem; }
+.auth-features strong,.auth-features small { display:block; } .auth-features strong { font-size:1rem; } .auth-features small { margin-top:4px; color:#4c5c5d; line-height:1.25; }
+.auth-illustration { display:flex; align-items:center; justify-content:center; min-width:0; background:#f8f4e8; overflow:hidden; }
+.auth-illustration img { width:150%; max-width:none; height:100%; object-fit:cover; object-position:48% center; mix-blend-mode:multiply; }
+.auth-panel { display:flex; align-items:center; justify-content:center; padding:36px; background:#f8f4e8; }
+.auth-panel .auth-card { width:min(100%,460px); padding:40px; border:1px solid #dedaca; border-radius:24px; background:#fffdf7; box-shadow:0 12px 30px #172d271c; }
+.auth-panel .auth-card h2 { margin-bottom:8px; color:#203235; font-size:2.3rem; } .auth-panel .auth-card > p:not(.error) { color:#5b6664; }
+.auth-panel .auth-card input { border-color:#cdd8d2; border-radius:12px; background:#fff; } .auth-panel .auth-card .primary { width:100%; margin-top:10px; }
+.auth-panel .auth-actions { display:flex; flex-direction:column; width:min(100%,460px); margin-top:18px; } .auth-panel .auth-actions button { width:100%; }
+@media (max-width:1100px) { .auth-shell { grid-template-columns:1fr 1fr; } .auth-illustration { display:none; } }
+@media (max-width:700px) { .auth-shell { display:block; min-height:100vh; } .auth-hero { padding:34px 22px 24px; } .auth-copy h1 { font-size:4rem; } .auth-copy h2 { font-size:2rem; } .auth-copy > p:last-child { font-size:1rem; } .auth-features { gap:8px; margin-top:24px; } .auth-features article { min-height:82px; padding:10px; } .auth-features span { width:32px; height:32px; font-size:1.2rem; } .auth-features small { font-size:.78rem; } .auth-encouragement { margin-top:20px; } .auth-panel { padding:20px; } .auth-panel .auth-card { padding:24px; } }
