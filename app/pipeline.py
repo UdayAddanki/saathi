@@ -8,7 +8,9 @@ import logging
 import re
 
 from pydantic_ai import UsageLimits
+from pydantic_ai.usage import RunUsage
 
+from .errors import TRANSIENT, classify, teacher_message
 from .agents.exit_check import check_agent, observation_agent, read_aloud_agent
 from .agents.planner import planner
 from .agents.reviewer import reviewer
@@ -22,20 +24,63 @@ from .diagnosis import analyze_results
 logger = logging.getLogger(__name__)
 
 
+def utc_today() -> str:
+    """Timestamps are stored in UTC, so daily budgets must use the UTC date too."""
+    return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+
+
 def _run(agent, prompt: str, run_id: str, name: str, teacher_id: str | None = None):
     if teacher_id:
         from .config import DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD
         from .db import rows
-        today = datetime.date.today().isoformat()
+        today = utc_today()
         global_cost = sum(item['cost_usd'] for item in rows('select cost_usd from llm_calls where created_at like ?', (today + '%',)))
         teacher_cost = sum(item['cost_usd'] for item in rows('select cost_usd from llm_calls where teacher_id=? and created_at like ?', (teacher_id, today + '%')))
         if global_cost >= DAILY_BUDGET_USD or teacher_cost >= TEACHER_DAILY_BUDGET_USD:
             raise RuntimeError("You've used today's limit. It resets at midnight.")
     curriculum.CURRENT_RUN_ID = run_id
     curriculum.CURRENT_AGENT = name
-    started = time.perf_counter()
-    result = agent.run_sync(prompt, usage_limits=UsageLimits(request_limit=6, total_tokens_limit=30000))
-    return result, record(run_id, name, result.usage, started, teacher_id)
+    # Long differentiated plans need room; the cap still stops runaway loops.
+    limits = UsageLimits(request_limit=8, total_tokens_limit=60000)
+    for attempt in (1, 2):
+        started = time.perf_counter()
+        usage = RunUsage()
+        try:
+            result = agent.run_sync(prompt, usage_limits=limits, usage=usage, retries=2)
+            return result, record(run_id, name, result.usage, started, teacher_id)
+        except Exception as error:
+            error_type = classify(error)
+            # Failed attempts still cost tokens: count them so usage and budgets stay honest.
+            record(run_id, f"{name}_failed", usage, started, teacher_id)
+            logger.warning("Agent %s failed on attempt %s for run %s: %s: %s", name, attempt, run_id, type(error).__name__, error)
+            if attempt == 2 or error_type not in TRANSIENT:
+                raise
+
+
+async def run_agent_async(agent, prompt, run_id: str, name: str, teacher_id: str | None = None):
+    """Async twin of _run for the routes that await agents (sheet reading, resources)."""
+    limits = UsageLimits(request_limit=8, total_tokens_limit=60000)
+    for attempt in (1, 2):
+        started = time.perf_counter()
+        usage = RunUsage()
+        try:
+            result = await agent.run(prompt, usage_limits=limits, usage=usage, retries=2)
+            return result, record(run_id, name, result.usage, started, teacher_id)
+        except Exception as error:
+            record(run_id, f"{name}_failed", usage, started, teacher_id)
+            logger.warning("Agent %s failed on attempt %s for run %s: %s: %s", name, attempt, run_id, type(error).__name__, error)
+            if attempt == 2 or classify(error) not in TRANSIENT:
+                raise
+
+
+def _fail_run(run_id: str, error: BaseException) -> str:
+    """Mark a run failed and keep the reason, so failures can be diagnosed later."""
+    error_type = classify(error)
+    database = conn()
+    database.execute("UPDATE runs SET status=?, error_type=?, error_message=? WHERE id=?", ("failed", error_type, f"{type(error).__name__}: {error}"[:500], run_id))
+    database.commit()
+    database.close()
+    return error_type
 
 
 def _curated_issues(check: dict, concepts: list[dict]) -> list[dict]:
@@ -122,11 +167,8 @@ def generate_plan(class_id: str, subject: str, chapter_or_topic: str | None = No
         return {"id": plan_id, "check_id": check_id, "run_id": run_id, "plan": plan.model_dump(), "check": check.model_dump(), "check_type": check_type, "mode": context["mode"], "review": review_data, "revised": revised, "usage": {"total": totals, "by_agent": usage_by_agent}}
     except Exception as error:
         logger.exception("Saathi pipeline failed for run %s", run_id)
-        database = conn()
-        database.execute("UPDATE runs SET status=? WHERE id=?", ("failed", run_id))
-        database.commit()
-        database.close()
-        return {"error": "The lesson could not be prepared. Check the API key and try again.", "run_id": run_id}
+        error_type = _fail_run(run_id, error)
+        return {"error": teacher_message(error_type), "error_type": error_type, "run_id": run_id}
 
 
 def generate_next_steps(check_id: str, teacher_id: str | None = None) -> dict:
@@ -153,7 +195,7 @@ def generate_next_steps(check_id: str, teacher_id: str | None = None) -> dict:
         totals = {key: sum(item[key] for item in usage.values()) for key in ("input_tokens", "cached_input_tokens", "output_tokens", "cost_usd", "provider_cost_usd")}
         db = conn(); db.execute("update runs set status=?, total_cost_usd=? where id=?", ("complete", totals["cost_usd"], run_id)); db.commit(); db.close()
         return {"run_id": run_id, "check_id": check_id, "insight": insight.model_dump(), "next_steps": output.model_dump(), "revised": revised, "issues": issues, "usage": {"total": totals, "by_agent": usage}}
-    except Exception:
+    except Exception as error:
         logger.exception("Next steps failed for run %s", run_id)
-        db = conn(); db.execute("update runs set status=? where id=?", ("failed", run_id)); db.commit(); db.close()
-        return {"error": "Next steps could not be prepared. Please try again.", "run_id": run_id}
+        error_type = _fail_run(run_id, error)
+        return {"error": teacher_message(error_type), "error_type": error_type, "run_id": run_id}

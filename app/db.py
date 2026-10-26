@@ -47,6 +47,10 @@ def init_db() -> None:
         columns = {row[1] for row in c.execute(f"PRAGMA table_info({table})")}
         if columns and "teacher_id" not in columns:
             c.execute(f"ALTER TABLE {table} ADD COLUMN teacher_id TEXT")
+    run_columns = {row[1] for row in c.execute("PRAGMA table_info(runs)")}
+    for name in ("error_type", "error_message"):
+        if name not in run_columns:
+            c.execute(f"ALTER TABLE runs ADD COLUMN {name} TEXT")
     sheet_columns = {row[1] for row in c.execute("PRAGMA table_info(sheet_files)")}
     if "teacher_id" not in sheet_columns:
         c.execute("ALTER TABLE sheet_files ADD COLUMN teacher_id TEXT")

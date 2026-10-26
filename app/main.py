@@ -16,7 +16,9 @@ from .config import ACCESS_CODE, DAILY_BUDGET_USD, TEACHER_DAILY_BUDGET_USD, DEM
 from .db import init_db, rows, one, conn, add_run
 from typing import List
 from .models import PlanRequest, ClassRequest
-from .pipeline import generate_plan, generate_next_steps
+from .pipeline import generate_plan, generate_next_steps, run_agent_async, utc_today
+from .pipeline import _fail_run as fail_run
+from .errors import classify, teacher_message
 from .config import ROOT
 from .diagnosis import analyze_results
 from .models import ResultsRequest
@@ -214,7 +216,7 @@ def guard_request(request):
     authorize(request)
 
 def budget_remaining(teacher_id: str | None = None) -> bool:
-    today = datetime.date.today().isoformat()
+    today = utc_today()
     total = sum(item['cost_usd'] for item in rows("select cost_usd from llm_calls where created_at like ?", (today + '%',)))
     if total >= DAILY_BUDGET_USD: return False
     if teacher_id:
@@ -470,17 +472,22 @@ def assign_submission(paper_id: str, payload: dict, request: Request):
 async def read_submissions(paper_id: str, request: Request):
     paper = owned_paper(request, paper_id)
     if not paper: raise HTTPException(404, 'Paper not found')
-    questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []
+    questions = json.loads(paper['questions_json']); teacher = require_teacher(request); run_id = add_run(paper['class_id'], 'answer_sheet_reading', teacher['id']); readings = []; failed = []
     sheets = rows('select * from sheet_files where paper_id=?', (paper_id,))
     if not sheets:
         raise HTTPException(422, 'Upload at least one answer sheet before reading results.')
     for index, sheet in enumerate(sheets):
         if not budget_remaining(teacher['id']):
             return {'paper_id': paper_id, 'readings': readings, 'message': f'Daily limit reached. {index} of {len(sheets)} sheets read; the rest can be read tomorrow.'}
-        started = time.perf_counter()
         assignment = f'This sheet is assigned to roll number {sheet["roll_no"]}.' if sheet['roll_no'] else 'Read the positive integer in the roll-number box at the top of the sheet.'
-        result = await answer_sheet_reader.run([BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), f'{assignment} Transcribe every question option and return the roll number in the structured output.'])
-        usage = record(run_id, 'answer_sheet_reader', result.usage, started, teacher['id'])
+        prompt = [BinaryContent(data=__import__('pathlib').Path(sheet['path']).read_bytes(), media_type='image/' + sheet['mime_type'] if sheet['mime_type'] != 'pdf' else 'application/pdf'), f'{assignment} Transcribe every question option and return the roll number in the structured output.']
+        try:
+            result, usage = await run_agent_async(answer_sheet_reader, prompt, run_id, 'answer_sheet_reader', teacher['id'])
+        except Exception as error:
+            # One unreadable sheet must not lose the rest of the batch.
+            logger.exception('Reading sheet %s failed for run %s', sheet['id'], run_id)
+            failed.append({'sheet_id': sheet['id'], 'roll_no': sheet['roll_no'], 'error': teacher_message(classify(error))})
+            continue
         roll_no = int(result.output.roll_no)
         if roll_no <= 0:
             raise HTTPException(422, 'A positive roll number was not readable. Assign this sheet manually.')
@@ -491,8 +498,12 @@ async def read_submissions(paper_id: str, request: Request):
             unreadable_numbers = {int(str(value).lstrip('Qq')) for value in result.output.unreadable}
             db.execute('insert into sheet_readings values(?,?,?,?,?,?,?)', (paper_id, roll_no, clean_number, answer, confidence, int(clean_number in unreadable_numbers), None))
         db.commit(); db.close(); readings.append({'roll_no': roll_no, 'usage': usage})
-    db = conn(); db.execute('update runs set status=? where id=?', ('complete', run_id)); db.commit(); db.close()
-    return {'paper_id': paper_id, 'readings': readings}
+    status = 'complete' if not failed else ('partial' if readings else 'failed')
+    db = conn(); db.execute('update runs set status=? where id=?', (status, run_id)); db.commit(); db.close()
+    response = {'paper_id': paper_id, 'readings': readings, 'failed': failed}
+    if failed:
+        response['message'] = f'{len(readings)} of {len(sheets)} sheets read. {len(failed)} could not be read; upload them again or try once more.'
+    return response
 
 @app.get('/api/papers/{paper_id}/review-grid')
 def review_grid(paper_id: str, request: Request):
@@ -607,7 +618,12 @@ async def generate_resources(check_id: str, kind: str, request: Request):
             rolls = [roll for roll, score in sorted(scores, key=lambda item: item[1]) if score < class_average][:5]
     duration = '30-minute parent–teacher meeting plan' if kind == 'meeting_plans' else kind
     run_id = add_run(check['class_id'], kind, teacher['id']); prompt = f'kind={kind}; check_id={check_id}; insight={insight.model_dump_json()}; roll_numbers={rolls}; duration={duration}. Return resources only.'
-    started = time.perf_counter(); result = await resource_builder.run(prompt); usage = record(run_id, 'resource_builder', result.usage, started, teacher['id'])
+    try:
+        result, usage = await run_agent_async(resource_builder, prompt, run_id, 'resource_builder', teacher['id'])
+    except Exception as error:
+        logger.exception('Resource generation failed for run %s', run_id)
+        error_type = fail_run(run_id, error)
+        raise HTTPException(429 if error_type == 'budget' else 502, teacher_message(error_type))
     content = result.output.model_dump(); db = conn(); db.execute('delete from resources where check_id=? and kind=?', (check_id, kind)); db.execute('insert into resources values(?,?,?,?,?,?,?,datetime("now"))', (uuid.uuid4().hex, check_id, kind, None, None, json.dumps(content), '{}',)); db.execute('update runs set status=?,total_cost_usd=? where id=?', ('complete', usage['cost_usd'], run_id)); db.commit(); db.close()
     return {'check_id': check_id, 'kind': kind, 'resources': content, 'usage': usage, 'roll_numbers': rolls}
 
