@@ -109,20 +109,3 @@ a { color:var(--sky); }
   .auth-login-panel { width:330px; padding:32px; }
   .auth-illustration img { width:125%; }
 }
-
-/* At desktop size the approved mockup is the visual canvas. The live form is
-   layered over its cream panel so the image remains exact while controls stay
-   real, keyboard-accessible elements. */
-@media (min-width:1400px) {
-  .auth-screen { min-height:100vh; background:#f8f4e8 url('/assets/saathi-classroom-login.png') center center / cover no-repeat; }
-  .auth-shell { display:block; min-height:100vh; background:transparent; }
-  .auth-hero, .auth-illustration { display:none; }
-  .auth-panel { position:absolute; top:10.5%; right:6.3%; width:27%; height:79%; padding:0; display:block; background:transparent; }
-  .auth-login-panel { width:100%; height:100%; padding:39px 9% 28px; border:0; background:transparent; box-shadow:none; }
-  .auth-panel .auth-card h2, .auth-panel .auth-card > p:not(.error) { visibility:hidden; }
-  .auth-panel .auth-card h2 { height:54px; margin:0; }
-  .auth-panel .auth-card > p:not(.error) { height:30px; margin:0; }
-  .auth-panel .auth-card label { margin:14px 0; }
-  .auth-panel .auth-card input { background:rgba(255,255,255,.72); }
-  .auth-panel .auth-actions { margin-top:14px; }
-}
