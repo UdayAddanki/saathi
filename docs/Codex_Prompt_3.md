@@ -12,6 +12,20 @@ The deliverables (due on Canvas; we are aiming to finish **Sunday night**):
 
 ---
 
+## 📌 Submission rules from the professor (latest; these override everything)
+
+Canvas accepts **files only**. We submit exactly:
+1. `report.html`
+2. `slides.html`
+3. optionally, a demo video (I record it myself)
+
+**Nothing else.** Any extra file is penalised.
+
+- **The GitHub repo URL must appear in BOTH `report.html` and `slides.html`**, or the staff can't clone and grade the app. Put it on the title page or slide, as a clickable link and also as plain text, plus a "Run it locally" pointer to the README. Use a placeholder `{{REPO_URL}}` that the build scripts fill from an env var, and make the build **fail** if it's still a placeholder.
+- **If the repo is private,** say so clearly in both files ("This repository is private; the GitHub user zlisto has been added as a collaborator"). Read this from an env var, `REPO_PRIVATE=true/false`, at build time.
+- There's no live app link: graders run it locally from the repo (the README's under-10-minute steps, with the `.env` one folder up, and the demo login).
+- The pilot wording: "piloted with real data from three classrooms". Don't say or suggest that teachers used the app themselves, and never attribute feedback, ratings, or time savings to teachers unless they actually gave them.
+
 ## ⚠️ Updates since this file was written (these override anything below)
 
 The app changed a lot after this file was written. Describe and test **the app as it is now**:
