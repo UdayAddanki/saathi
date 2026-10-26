@@ -21,7 +21,7 @@ pip install -r requirements.txt
 Put `PORTKEY_API_KEY=...` in a `.env` file in this Saathi folder, or in the folder immediately above it. Then run:
 
 ```bash
-python run.py
+python3 run.py
 ```
 
 Open <http://localhost:8000> and click **Try the demo account**. A blank or missing `DEMO_MODE` enables the local demo; set `DEMO_MODE=false` to hide it.
