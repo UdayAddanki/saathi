@@ -1,1 +1,5 @@
-PLACEHOLDER: no teacher feedback recorded yet
+feedback_id,rating,teach_decision,usual_time,saathi_minutes,opened_plan_tab_at,prepare_clicked_at,plan_ready_at,first_print_or_feedback_at,created_at
+feedback-1,3,with_changes,over_60,2.0,,,,,2026-10-26T02:22:25.804458+00:00
+feedback-2,3,yes,under_15,2.0,,,,,2026-10-26T02:38:31.047812+00:00
+feedback-3,4,yes,over_60,3.0,,,,,2026-10-26T02:54:03.361269+00:00
+feedback-4,5,yes,30_60,2.0,,,,,2026-10-26T03:22:40.185504+00:00
