@@ -1,4 +1,291 @@
 {
-  "status": "placeholder",
-  "reason": "The real traced Plan → print → upload → review → confirm → analysis → Next steps → worksheet → warm-up loop has not yet been collected."
+  "source": "demo fixture trace; no real classroom data",
+  "records": [
+    {
+      "step": "login",
+      "duration_s": 0.056,
+      "detail": "demo session established"
+    },
+    {
+      "step": "create class",
+      "duration_s": 0.006,
+      "detail": "Grade 3 Telangana class"
+    },
+    {
+      "step": "class roll",
+      "duration_s": 0.175,
+      "detail": "38 rows saved"
+    },
+    {
+      "step": "plan",
+      "duration_s": 46.57,
+      "detail": "Grade 3 place value 5-step lesson",
+      "plan_id": "a9133733-0924-47a2-8eca-4be60d0f8efe",
+      "check_id": "e48840a9-6872-4cca-99ca-9660bf16fc3c"
+    },
+    {
+      "step": "print answer sheet",
+      "duration_s": 0.018,
+      "detail": "answer key created for printable sheet",
+      "paper_id": "3cd74432dac1414782be839aceff7af9"
+    },
+    {
+      "step": "upload five sheets",
+      "duration_s": 0.017,
+      "detail": "5 fixture sheets uploaded"
+    },
+    {
+      "step": "read sheets",
+      "duration_s": 10.911,
+      "detail": "batch complete"
+    },
+    {
+      "step": "confirm",
+      "duration_s": 0.012,
+      "detail": "25 results confirmed"
+    },
+    {
+      "step": "analysis",
+      "duration_s": 0.008,
+      "detail": "code diagnosis loaded"
+    },
+    {
+      "step": "next steps",
+      "duration_s": 29.362,
+      "detail": "Coach output generated"
+    },
+    {
+      "step": "worksheet",
+      "duration_s": 6.651,
+      "detail": "worksheet generated"
+    },
+    {
+      "step": "use in next lesson",
+      "duration_s": 0.008,
+      "detail": "warm-up saved"
+    }
+  ],
+  "llm_calls": [
+    {
+      "agent_name": "lesson_planner",
+      "input_tokens": 3062,
+      "cached_input_tokens": 1176,
+      "output_tokens": 1975,
+      "cost_usd": 0.0013231,
+      "provider_cost_usd": 0.00122871,
+      "duration_ms": 14125
+    },
+    {
+      "agent_name": "check_builder",
+      "input_tokens": 5233,
+      "cached_input_tokens": 2411,
+      "output_tokens": 781,
+      "cost_usd": 0.000974075,
+      "provider_cost_usd": 0.00076106,
+      "duration_ms": 5997
+    },
+    {
+      "agent_name": "reviewer",
+      "input_tokens": 6699,
+      "cached_input_tokens": 3147,
+      "output_tokens": 1074,
+      "cost_usd": 0.001285575,
+      "provider_cost_usd": 0.00100617,
+      "duration_ms": 6445
+    },
+    {
+      "agent_name": "lesson_planner_revision",
+      "input_tokens": 5010,
+      "cached_input_tokens": 2150,
+      "output_tokens": 2134,
+      "cost_usd": 0.00162175,
+      "provider_cost_usd": 0.0014397,
+      "duration_ms": 13512
+    },
+    {
+      "agent_name": "reviewer_revision",
+      "input_tokens": 7003,
+      "cached_input_tokens": 3299,
+      "output_tokens": 920,
+      "cost_usd": 0.001242775,
+      "provider_cost_usd": 0.00094969,
+      "duration_ms": 6446
+    },
+    {
+      "agent_name": "answer_sheet_reader",
+      "input_tokens": 1976,
+      "cached_input_tokens": 0,
+      "output_tokens": 94,
+      "cost_usd": 0.00024460000000000004,
+      "provider_cost_usd": 0.0002446,
+      "duration_ms": 2219
+    },
+    {
+      "agent_name": "answer_sheet_reader",
+      "input_tokens": 1976,
+      "cached_input_tokens": 0,
+      "output_tokens": 94,
+      "cost_usd": 0.00024460000000000004,
+      "provider_cost_usd": 0.0002446,
+      "duration_ms": 1910
+    },
+    {
+      "agent_name": "answer_sheet_reader",
+      "input_tokens": 1976,
+      "cached_input_tokens": 0,
+      "output_tokens": 94,
+      "cost_usd": 0.00024460000000000004,
+      "provider_cost_usd": 0.0002446,
+      "duration_ms": 2038
+    },
+    {
+      "agent_name": "answer_sheet_reader",
+      "input_tokens": 1976,
+      "cached_input_tokens": 0,
+      "output_tokens": 169,
+      "cost_usd": 0.0002821,
+      "provider_cost_usd": 0.0002821,
+      "duration_ms": 2651
+    },
+    {
+      "agent_name": "answer_sheet_reader",
+      "input_tokens": 1976,
+      "cached_input_tokens": 0,
+      "output_tokens": 94,
+      "cost_usd": 0.00024460000000000004,
+      "provider_cost_usd": 0.0002446,
+      "duration_ms": 2049
+    },
+    {
+      "agent_name": "coach",
+      "input_tokens": 4509,
+      "cached_input_tokens": 1437,
+      "output_tokens": 1257,
+      "cost_usd": 0.0011153250000000001,
+      "provider_cost_usd": 0.000994845,
+      "duration_ms": 12731
+    },
+    {
+      "agent_name": "reviewer",
+      "input_tokens": 4332,
+      "cached_input_tokens": 1958,
+      "output_tokens": 371,
+      "cost_usd": 0.0006676500000000001,
+      "provider_cost_usd": 0.00049553,
+      "duration_ms": 4797
+    },
+    {
+      "agent_name": "coach_revision",
+      "input_tokens": 4656,
+      "cached_input_tokens": 1486,
+      "output_tokens": 1033,
+      "cost_usd": 0.00101925,
+      "provider_cost_usd": 0.00089436,
+      "duration_ms": 11805
+    },
+    {
+      "agent_name": "resource_builder",
+      "input_tokens": 2388,
+      "cached_input_tokens": 0,
+      "output_tokens": 755,
+      "cost_usd": 0.0006163,
+      "provider_cost_usd": 0.000649675,
+      "duration_ms": 6626
+    }
+  ],
+  "tool_calls": [
+    {
+      "agent": "lesson_planner",
+      "tool": "get_curriculum_context",
+      "arguments": "{\"board\": \"TS_SCERT\", \"grade\": 3, \"subject\": \"Mathematics\", \"chapter_or_topic\": \"Place value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "lesson_planner",
+      "tool": "get_class_profile",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 7
+    },
+    {
+      "agent": "lesson_planner",
+      "tool": "get_latest_insights",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 7
+    },
+    {
+      "agent": "check_builder",
+      "tool": "get_misconceptions",
+      "arguments": "{\"concept_id\": \"place-value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "reviewer",
+      "tool": "get_curriculum_context",
+      "arguments": "{\"board\": \"TS_SCERT\", \"grade\": 3, \"subject\": \"Mathematics\", \"chapter_or_topic\": \"Place value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "lesson_planner_revision",
+      "tool": "get_curriculum_context",
+      "arguments": "{\"board\": \"TS_SCERT\", \"grade\": 3, \"subject\": \"Mathematics\", \"chapter_or_topic\": \"Place value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "lesson_planner_revision",
+      "tool": "get_class_profile",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 9
+    },
+    {
+      "agent": "lesson_planner_revision",
+      "tool": "get_latest_insights",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 8
+    },
+    {
+      "agent": "reviewer_revision",
+      "tool": "get_curriculum_context",
+      "arguments": "{\"board\": \"TS_SCERT\", \"grade\": 3, \"subject\": \"Mathematics\", \"chapter_or_topic\": \"Place value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "coach",
+      "tool": "get_misconceptions",
+      "arguments": "{\"concept_id\": \"place-value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "coach",
+      "tool": "get_class_profile",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 1
+    },
+    {
+      "agent": "reviewer",
+      "tool": "get_curriculum_context",
+      "arguments": "{\"board\": \"TS_SCERT\", \"grade\": 2, \"subject\": \"Mathematics\", \"chapter_or_topic\": \"Place value: tens and ones; digit value in two-digit numbers\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "coach_revision",
+      "tool": "get_misconceptions",
+      "arguments": "{\"concept_id\": \"place-value\"}",
+      "duration_ms": 0
+    },
+    {
+      "agent": "coach_revision",
+      "tool": "get_class_profile",
+      "arguments": "{\"class_id\": \"612cfe34-010b-4da4-931a-72fcf2087019\"}",
+      "duration_ms": 1
+    }
+  ],
+  "run_ids": [
+    "87f37a54-c994-446f-81fb-9add940f8cb2",
+    "5e43d528-d5df-43a0-b6e2-67d61cbc28bb",
+    "e2278bba-979a-4169-b296-c4c74e9ec906"
+  ],
+  "diagnosis_experiment": {
+    "status": "not run",
+    "reason": "Run separately only if the course model is available; no comparison is fabricated."
+  }
 }
